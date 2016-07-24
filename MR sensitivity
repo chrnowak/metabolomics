@@ -73,17 +73,17 @@ names(COMB)[grep("^rs",names(COMB))] <- split_1[,1]
 COMB[,which(names(COMB) %in% c("rs4846565","rs10195252","rs2943645","rs17036328", "rs6822892","rs4865796","rs459193","rs2745353" ))] =
   -(COMB[,which(names(COMB) %in% c("rs4846565","rs10195252","rs2943645","rs17036328", "rs6822892","rs4865796","rs459193","rs2745353" ))]-2)
 
-##### ##### MR Sensitivity: IVW est, loglik est, MR Egger ##### ##### ##### ##### #####
+##### ##### MR Sensitivity: IVW, loglikelihood, MR Egger estimates ##### ##### ##### ##### #####
   ## association in MAGIC are per log-HOMA-IR unit  
   ## for comparison converted to SD-unit by division with SD(logHOMA-IR) = 0.2280594 (MAGIC cohorts)
 
-  # to get right snp names order
+  ## snp names order
 irsnps_for_MR_names <- names(COMB)[which(names(COMB) %in% ir_magic_snps$snp)]
-  # the sign. metabolites
+  ## the sign. metabolites
 metabo_0 <- c("Trihydroxy_5b_cholanoic_acid","gamma_Tocopherol","Oleic_acid","MAG_14_0","MAG_18_1","MAG_18_2","L_Tyrosine","Palmitoleic_acid","Hippuric_acid")
 metabo <- names(COMB)[which(names(COMB) %in% metabo_0)]
 
-  # per-snp associations with metabolite - age, sex, cohort adjusted
+  ## per-snp associations with metabolite - age, sex, cohort adjusted
 IR_Beta<-NULL;IR_SE<-NULL;IR_P<-NULL
 for (i in which(names(COMB) %in% ir_magic_snps$snp)){
   IR_Beta <- rbind(IR_Beta,sapply(which(names(COMB) %in% metabo), function(x) 
@@ -103,14 +103,14 @@ rownames(IR_P) <- irsnps_for_MR_names
 IR_Beta<-data.frame(IR_Beta)
 IR_SE<-data.frame(IR_SE)
 
-####### IVW and loglik methods: Burgess et al. 2015 Eu J Epi (PMID 25773750) - App A.2 & A.3 ##############
+  #### IVW and loglik: Burgess et al. 2015 (PMID 25773750) - App A.2 & A.3 ####
 
-x = ir_magic_snps$effect/0.2280594 # => log-HOMA-IR SD in MAGIC
+x = ir_magic_snps$effect/0.2280594 
 sigmax = ir_magic_snps$stderr/0.2280594
 y = IR_Beta
 sigmay = IR_SE
 
-  ## inverse variance weighted MR with uncorrelated variants (Appendix A.2)
+  ## IVW MR with uncorrelated variants (Appendix A.2)
 IVW_beta <- NULL; IVW_se <- NULL
 for(i in 1:ncol(IR_Beta)){
   ## Pooled estimate from inverse-variance weighted method
@@ -134,7 +134,7 @@ for(i in 1:ncol(IR_Beta)){
 SWE_tab1 <- data.frame(cbind(colnames(IR_Beta), IVW_beta, IVW_se, loglik_beta, loglik_se, hetero_pval))
 colnames(SWE_tab1) <- c("Metabolite","IVW_est","IVW_se","LogLikelihood_est","LogLikelihood_se","Heterogeneity_pval")
 
-####### MR Egger regression: Bowden et al. 2015 Int J Epi - Suppl Appendix (PMID 26050253) 
+  ##### MR Egger regression: Bowden et al. 2015 - Suppl Appendix (PMID 26050253) #####
 
 BetaXG = ir_magic_snps$effect/0.2280594 
 seBetaXG = ir_magic_snps$stderr/0.2280594
@@ -169,14 +169,14 @@ for (i in 1:ncol(IR_Beta)){
 }
 
 MREgger_SWE <- data.frame(do.call(rbind.data.frame, MREgger))
-n<-NULL
+n <- NULL
 for (i in 1:9){
   n<-c(n,rep(names(IR_Beta[i]),2))
 }
 MREgger_SWE$Metabolite <- n  
 # write.table(MREgger_SWE,"MREGGER_SWE.txt")
 
-#### Plots: Scatter and Funnel per metabolite ####
+  #### Plots: Scatter and Funnel per metabolite #####
 
   ## Oleic Acid ##
 df <- data.frame(x = ir_magic_snps$effect/0.2280594, y = IR_Beta$Oleic_acid,
@@ -217,7 +217,7 @@ ggplot(data = dfunnel,aes(x = x,y = y)) +
   labs(y="IV strength",x="IV estimate") +
   ylim(0,16) + xlim(-0.5,0.5)
 
-  ## Palmitoleic acid ####
+  ## Palmitoleic acid 
 df <- data.frame(x = ir_magic_snps$effect/0.2280594, y = IR_Beta$Palmitoleic_acid,
                  ymin = IR_Beta$Palmitoleic_acid - (1.96*IR_SE$Palmitoleic_acid),
                  ymax = IR_Beta$Palmitoleic_acid + (1.96*IR_SE$Palmitoleic_acid),
@@ -256,8 +256,7 @@ ggplot(data = dfunnel,aes(x = x,y = y)) +
   labs(y="IV strength",x="IV estimate") +
   ylim(0,5) + xlim(-2,2)
 
-  ## Hippuric acid ####
-
+  ## Hippuric acid
 df <- data.frame(x = ir_magic_snps$effect/0.2280594, y = IR_Beta$Hippuric_acid,
                  ymin = IR_Beta$Hippuric_acid - (1.96*IR_SE$Hippuric_acid),
                  ymax = IR_Beta$Hippuric_acid + (1.96*IR_SE$Hippuric_acid),
@@ -296,8 +295,7 @@ ggplot(data = dfunnel,aes(x = x,y = y)) +
   labs(y="IV strength",x="IV estimate") +
   ylim(0,3.5) + xlim(-3,3)
 
-  ## Tyrosine ####
-
+  ## Tyrosine
 df <- data.frame(x = ir_magic_snps$effect/0.2280594, y = IR_Beta$L_Tyrosine,
                  ymin = IR_Beta$L_Tyrosine - (1.96*IR_SE$L_Tyrosine),
                  ymax = IR_Beta$L_Tyrosine + (1.96*IR_SE$L_Tyrosine),
@@ -336,8 +334,7 @@ ggplot(data = dfunnel,aes(x = x,y = y)) +
   labs(y="IV strength",x="IV estimate") +
   ylim(0,3.5) + xlim(-2.5,2.5)
 
-  ## MAG_18_1 ####
-
+  ## MAG_18_1
 df <- data.frame(x = ir_magic_snps$effect/0.2280594, y = IR_Beta$MAG_18_1,
                  ymin = IR_Beta$MAG_18_1 - (1.96*IR_SE$MAG_18_1),
                  ymax = IR_Beta$MAG_18_1 + (1.96*IR_SE$MAG_18_1),
@@ -376,8 +373,7 @@ ggplot(data = dfunnel,aes(x = x,y = y)) +
   labs(y="IV strength",x="IV estimate") +
   ylim(0,3.5) + xlim(-2.5,2.5)
 
-  ## MAG_18_2 ####
-
+  ## MAG_18_2
 df <- data.frame(x = ir_magic_snps$effect/0.2280594, y = IR_Beta$MAG_18_2,
                  ymin = IR_Beta$MAG_18_2 - (1.96*IR_SE$MAG_18_2),
                  ymax = IR_Beta$MAG_18_2 + (1.96*IR_SE$MAG_18_2),
