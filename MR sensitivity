@@ -412,8 +412,7 @@ ggplot(data = dfunnel,aes(x = x,y = y)) +
   labs(y="IV strength",x="IV estimate") +
   ylim(0,3.5) + xlim(-2.5,2.5)
 
-  ## MAG_14_0 ####
-
+  ## MAG_14_0
 df <- data.frame(x = ir_magic_snps$effect/0.2280594, y = IR_Beta$MAG_14_0,
                  ymin = IR_Beta$MAG_14_0 - (1.96*IR_SE$MAG_14_0),
                  ymax = IR_Beta$MAG_14_0 + (1.96*IR_SE$MAG_14_0),
@@ -493,7 +492,6 @@ ggplot(data = dfunnel,aes(x = x,y = y)) +
   ylim(0,3.5) + xlim(-3,3)
 
   ## Gamma-tocopherol ####
-
 df <- data.frame(x = ir_magic_snps$effect/0.2280594, y = IR_Beta$gamma_Tocopherol,
                  ymin = IR_Beta$gamma_Tocopherol - (1.96*IR_SE$gamma_Tocopherol),
                  ymax = IR_Beta$gamma_Tocopherol + (1.96*IR_SE$gamma_Tocopherol),
@@ -535,7 +533,7 @@ ggplot(data = dfunnel,aes(x = x,y = y)) +
 
 ##### ##### ##### IR MR sensitivity in the replication samples  ##### ##### #####
 
-##### ##### KORA / TwinsUK #####
+##### KORA / TwinsUK #####
 
 oleate_kora_2 <- read.table("oleate_kora_2.txt")
 tyrosine_kora_2 <- read.table("tyrosine_kora_2.txt")
@@ -544,7 +542,7 @@ palmit_kora_2 <- read.table("palmit_kora_2.txt")
 mag182_kora_2 <- read.table("mag182_kora_2.txt")
 mag181_kora_2 <- read.table("mag181_kora_2.txt")
 gtoco_kora_2 <- read.table("gtoco_kora_2.txt")
-  ## in SD units (see main script)
+  ## in SD units (see main script), pooled SD from KORA and TwinsUK samples
 k_palmit_sd <- sqrt(((0.208^2)*6010 + (0.208^2)*1766)/(6010+1766))
 k_oleate_sd <- sqrt(((0.140^2)*6003 + (0.111^2)*1765)/(6003+1765))
 k_hippuric_sd <- sqrt(((0.280^2)*6048 + (0.294^2)*1758)/(6048+1758))
@@ -575,7 +573,6 @@ kora_se <- cbind(oleate_kora_2$StdErr,palmit_kora_2$StdErr,hippuric_kora_2$StdEr
                 mag181_kora_2$StdErr,mag182_kora_2$StdErr,gtoco_kora_2$StdErr)
  
   ## IVW, loglik, MR Egger
-
 x = ir_magic_snps$effect/0.2280594 
 sigmax = ir_magic_snps$stderr/0.2280594
 y = kora_b
@@ -599,13 +596,10 @@ for(i in 1:ncol(kora_b)){
   hetero_pval <- c(hetero_pval,round(pchisq(2*opt$value, df=length(x)-1, lower.tail=FALSE),3))
 }
 
-KORA_tab1 <- data.frame(c("Oleate","Palmitoleate","Hippurate","Tyrosine",
-                        "MAG(18_1)","MAG(18_2)","Gamma_tocpherol"), IVW_beta, IVW_se, loglik_beta, loglik_se, hetero_pval)
+KORA_tab1 <- data.frame(c("Oleate","Palmitoleate","Hippurate","Tyrosine","MAG(18_1)","MAG(18_2)","Gamma_tocpherol"), IVW_beta, IVW_se, loglik_beta, loglik_se, hetero_pval)
 colnames(KORA_tab1) <- c("Metabolite","IVW_est","IVW_se","LogLikelihood_est","LogLikelihood_se","Heterogeneity_pval")
 
-
   ## MR Egger regression
-
 BetaXG = ir_magic_snps$effect/0.2280594 
 seBetaXG = ir_magic_snps$stderr/0.2280594
 BetaYG =  kora_b
@@ -637,12 +631,10 @@ for (i in 1:ncol(kora_b)){
 }
 
 MREgger_KORA <- data.frame(do.call(rbind.data.frame, MREgger_kora))
-MREgger_KORA$Metabolite <- c(rep("Oleic acid",2),rep("Palmitoleic acid",2),rep("Hippuric acid",2),
-                             rep("Tyrosine",2),rep("MAG(18:1)",2),rep("MAG(18:2)",2),rep("Gamma Tocopherol",2))
+MREgger_KORA$Metabolite <- c(rep("Oleic acid",2),rep("Palmitoleic acid",2),rep("Hippuric acid",2),rep("Tyrosine",2),rep("MAG(18:1)",2),rep("MAG(18:2)",2),rep("Gamma Tocopherol",2))
 # write.table(MREgger_KORA,"MREGGER_KORA.txt")
 
- ## KORA Oleic acid ####
-
+ ## KORA Oleic acid
 df <- data.frame(x = ir_magic_snps$effect/0.2280594, y = kora_b[,1],
                  ymin = kora_b[,1] - (1.96*kora_se[,1]),
                  ymax = kora_b[,1] + (1.96*kora_se[,1]),
@@ -681,8 +673,7 @@ ggplot(data = dfunnel,aes(x = x,y = y)) +
   labs(y="IV strength",x="IV estimate") +
   ylim(0,5) + xlim(-2,2)
 
-  ## KORA Palmitoleic acid ####
-
+  ## KORA Palmitoleic acid
 df <- data.frame(x = ir_magic_snps$effect/0.2280594, y = kora_b[,2],
                  ymin = kora_b[,2] - (1.96*kora_se[,2]),
                  ymax = kora_b[,2] + (1.96*kora_se[,2]),
@@ -721,8 +712,7 @@ ggplot(data = dfunnel,aes(x = x,y = y)) +
   labs(y="IV strength",x="IV estimate") +
   ylim(0,5) + xlim(-2,2)
 
-  ## KORA Hippuric acid ####
-
+  ## KORA Hippuric acid
 df <- data.frame(x = ir_magic_snps$effect/0.2280594, y = kora_b[,3],
                  ymin = kora_b[,3] - (1.96*kora_se[,3]),
                  ymax = kora_b[,3] + (1.96*kora_se[,3]),
@@ -761,8 +751,7 @@ ggplot(data = dfunnel,aes(x = x,y = y)) +
   labs(y="IV strength",x="IV estimate") +
   ylim(0,5) + xlim(-2,2)
 
-  ## KORA Tyrosine ####
-
+  ## KORA Tyrosine
 df <- data.frame(x = ir_magic_snps$effect/0.2280594, y = kora_b[,4],
                  ymin = kora_b[,4] - (1.96*kora_se[,4]),
                  ymax = kora_b[,4] + (1.96*kora_se[,4]),
@@ -801,8 +790,7 @@ ggplot(data = dfunnel,aes(x = x,y = y)) +
   labs(y="IV strength",x="IV estimate") +
   ylim(0,5) + xlim(-2,2)
 
-  ## KORA MAG 18:1 ####
-
+  ## KORA MAG 18_1
 df <- data.frame(x = ir_magic_snps$effect/0.2280594, y = kora_b[,5],
                  ymin = kora_b[,5] - (1.96*kora_se[,5]),
                  ymax = kora_b[,5] + (1.96*kora_se[,5]),
@@ -841,8 +829,7 @@ ggplot(data = dfunnel,aes(x = x,y = y)) +
   labs(y="IV strength",x="IV estimate") +
   ylim(0,5) + xlim(-2,2)
 
-  ## KORA MAG 18:2 ####
-
+  ## KORA MAG 18:2
 df <- data.frame(x = ir_magic_snps$effect/0.2280594, y = kora_b[,6],
                  ymin = kora_b[,6] - (1.96*kora_se[,6]),
                  ymax = kora_b[,6] + (1.96*kora_se[,6]),
@@ -881,8 +868,7 @@ ggplot(data = dfunnel,aes(x = x,y = y)) +
   labs(y="IV strength",x="IV estimate") +
   ylim(0,5) + xlim(-3,3)
 
-  ## KORA gamma Tocopherol ####
-
+  ## KORA gamma Tocopherol
 df <- data.frame(x = ir_magic_snps$effect/0.2280594, y = kora_b[,7],
                  ymin = kora_b[,7] - (1.96*kora_se[,7]),
                  ymax = kora_b[,7] + (1.96*kora_se[,7]),
@@ -925,24 +911,21 @@ ggplot(data = dfunnel,aes(x = x,y = y)) +
 
 oleate_charge_2 <- read.table("oleate_charge_2.txt")
 palmit_charge_2 <- read.table("palmit_charge_2.txt")
-  ## SD-unit (see main script) 
+  ## SD-unit (see main script) SD pooled across cohorts from Table 1 of Wu et al.
 c_oleate_sd <- sqrt(((1.1^2)*3269 + (1.2^2)*1507 + (1.1^2)*2404 + (3.7^2)*1075 + (1.2^2)*706) / (3269+1507+2404+1075+706))
 c_palmit_sd <- sqrt(((0.18^2)*3269 + (0.22^2)*1507 + (0.21^2)*2404 + (0.9^2)*1075 + (0.25^2)*706) / (3269+1507+2404+1075+706))
-
 oleate_charge_2$Effect2 <- oleate_charge_2$Effect2 / (c_oleate_sd )
 oleate_charge_2$StdErr <- oleate_charge_2$StdErr / (c_oleate_sd )
 palmit_charge_2$Effect2 <- palmit_charge_2$Effect2 / (c_palmit_sd )
 palmit_charge_2$StdErr <- palmit_charge_2$StdErr / (c_palmit_sd )
-
 charge_b <- cbind(oleate_charge_2$Effect2,palmit_charge_2$Effect2)
 charge_se <- cbind(oleate_charge_2$StdErr,palmit_charge_2$StdErr)
 
-  ## IVW, loglik, MR Egger
+  ## IVW
 x = ir_magic_snps$effect/0.2280594 
 sigmax = ir_magic_snps$stderr/0.2280594
 y = charge_b
 sigmay = charge_se
-
 IVW_beta <- NULL;IVW_se <- NULL
 for(i in 1:ncol(charge_b)){
   IVW_beta <- c(IVW_beta,sum(x*y[,i]/sigmay[,i]^2)/sum(x^2/sigmay[,i]^2))
@@ -965,7 +948,6 @@ CHARGE_tab1 <- data.frame(c("Oleate","Palmitoleate"), IVW_beta, IVW_se, loglik_b
 colnames(CHARGE_tab1) <- c("Metabolite","IVW_est","IVW_se","LogLikelihood_est","LogLikelihood_se","Heterogeneity_pval")
 
   ## MR Egger regression
-
 BetaXG = ir_magic_snps$effect/0.2280594 
 seBetaXG = ir_magic_snps$stderr/0.2280594
 BetaYG =  charge_b
@@ -1001,8 +983,7 @@ MREgger_CHARGE <- data.frame(do.call(rbind.data.frame, MREgger_charge))
 MREgger_CHARGE$Metabolite <- c(rep("Oleic acid",2),rep("Palmitoleic acid",2))
 # write.table(MREgger_CHARGE,"MREGGER_CHARGE.txt")
 
-  ## CHARGE Oleic acid ####
-
+  ## CHARGE Oleic acid
 df <- data.frame(x = ir_magic_snps$effect/0.2280594, y = charge_b[,1],
                  ymin = charge_b[,1] - (1.96*charge_se[,1]),
                  ymax = charge_b[,1] + (1.96*charge_se[,1]),
@@ -1041,8 +1022,7 @@ ggplot(data = dfunnel,aes(x = x,y = y)) +
   labs(y="IV strength",x="IV estimate") +
   ylim(0,8) + xlim(-1.5,1.5)
 
-  ## CHARGE Palmitoleic acid ####
-
+  ## CHARGE Palmitoleic acid 
 df <- data.frame(x = ir_magic_snps$effect/0.2280594, y = charge_b[,2],
                  ymin = charge_b[,2] - (1.96*charge_se[,2]),
                  ymax = charge_b[,2] + (1.96*charge_se[,2]),
@@ -1081,16 +1061,15 @@ ggplot(data = dfunnel,aes(x = x,y = y)) +
   labs(y="IV strength",x="IV estimate") + 
   ylim(0,10) + xlim(-1,1)
 
-###### ######  Finnish ##### ##### 
+###### ###### Finnish study ##### ##### 
 
 tyrosine_fin_2 <- read.table("tyrosine_fin_2.txt")
 
-    ## IVW, loglik, MR Egger
+    ## IVW
 x = ir_magic_snps$effect/0.2280594 
 sigmax = ir_magic_snps$stderr/0.2280594
 y = tyrosine_fin_2$Effect2
 sigmay = tyrosine_fin_2$se
-
 IVW_beta <- NULL;IVW_se <- NULL
 IVW_beta <- c(IVW_beta,sum(x*y/sigmay^2)/sum(x^2/sigmay^2))
 IVW_se <- c(IVW_se,sqrt(1/sum(x^2/sigmay^2)))
@@ -1109,7 +1088,6 @@ FIN_tab1 <- data.frame("Tyrosine", IVW_beta, IVW_se, loglik_beta, loglik_se, het
 colnames(FIN_tab1) <- c("Metabolite","IVW_est","IVW_se","LogLikelihood_est","LogLikelihood_se","Heterogeneity_pval")
 
   ## MR Egger regression
-
 BetaXG = ir_magic_snps$effect/0.2280594 
 seBetaXG = ir_magic_snps$stderr/0.2280594
 BetaYG =  tyrosine_fin_2$Effect2
@@ -1141,8 +1119,7 @@ MREgger_finnish <- data.frame(MREgger_finnish)
 MREgger_finnish$Metabolite <- rep("Tyrosine",2)
 # write.table(MREgger_finnish,"MREGGER_FINNISH.txt")
 
-  ## FINN Tyrosine #########
-
+  ## FINN Tyrosine
 df <- data.frame(x = ir_magic_snps$effect/0.2280594, y = tyrosine_fin_2$Effect2,
                  ymin = tyrosine_fin_2$Effect2 - (1.96*tyrosine_fin_2$se),
                  ymax = tyrosine_fin_2$Effect2 + (1.96*tyrosine_fin_2$se),
@@ -1180,8 +1157,9 @@ ggplot(data = dfunnel,aes(x = x,y = y)) +
   ggtitle("Insulin resistance - Tyrosine - Finnish - Instrument strength against IV estimate") +
   labs(y="IV strength",x="IV estimate") + 
   ylim(0,6) + xlim(-2,2)
-
-## FOR ALL: export Egger results
+  
+  
+#### FOR ALL: export Egger results
 SWE_tab1$cohort <- rep("SWE",nrow(SWE_tab1))
 KORA_tab1$cohort <- rep("KORA",nrow(KORA_tab1))
 CHARGE_tab1$cohort <- rep("CHARGE",nrow(CHARGE_tab1))
@@ -1191,13 +1169,10 @@ MREGGERresults <-rbind(sapply(SWE_tab1, as.character),sapply(KORA_tab1, as.chara
 
 ################################################################################################################################
 ################################################################################################################################
-################################################################################################################################
-################################################################################################################################
-################################################################################################################################
 
-##### ##### ##### #####  ##### ##### ##### ##### ##### ##### ##### ##### ##### 
-##### ##### ##### ##### Insulin Secretion ##### ##### ##### ##### ##### ##### #####
-##### ##### ##### #####  ##### ##### ##### ##### ##### ##### ##### ##### ##### 
+##### ##### ##### #####  ##### ##### ##### ##### ##### ##### ##### ##### ##### ######
+##### ##### ##### ##### Insulin Secretion   ##### ##### ##### ##### ##### ##### #####
+##### ##### ##### #####  ##### ##### ##### ##### ##### ##### ##### ##### ##### ######
 
 is_total <- read.table("is_total.txt")
 is_total$Cohort_1 <- 0
@@ -1206,7 +1181,7 @@ is_total$Cohort_1[which(is.na(is_total$piusnr))] <- 1 # 1 is TWGE
 is_snps_in_cohorts <- c("rs2191349", "rs12686676","rs12779790","rs10946398","rs7957197","rs10811661",
                         "rs7903146","rs5219","rs174550","rs11603334","rs10830963" ,"rs4502156","rs11672660",
                         "rs4607517","rs5015480","rs2237895","rs11605924","rs560887","rs950994","rs13266634")
-  # leave out rs1800574 as imputed
+  # leave out rs1800574 as NA in cohorts
 
 is_magic_snps <- magic_is[which(magic_is$snp %in% is_snps$rs_id),] 
 is_magic_snps <- is_magic_snps[order(match(is_magic_snps$snp,is_snps$rs_id)),]
@@ -1221,7 +1196,7 @@ forest.default(is_magic_snps$effect,sei=is_magic_snps$stderr,psize=1,slab=is_mag
                main="IV-Exposure association MAGIC (n=26,037)",xlab="CIR, 95% CI, (SD-units)")
 
 
-##### ##### MR Sensitivity: IVW est, loglik est, MR Egger ##### #####
+##### MR Sensitivity prep
 
   ## to get right snp names order
 issnps_for_MR_names <- names(is_total)[which(names(is_total) %in% is_magic_snps$snp)]
@@ -1249,18 +1224,14 @@ rownames(IS_P) <- issnps_for_MR_names
 IS_Beta<-data.frame(IS_Beta)
 IS_SE<-data.frame(IS_SE)
 
-  ## IVW and loglik methods
+  ## IVW
 is_magic_snps <- is_magic_snps[order(match(is_magic_snps$snp,rownames(IS_Beta))),]
-
 x = is_magic_snps$effect 
 sigmax = is_magic_snps$stderr
 y = IS_Beta
 sigmay = IS_SE
-
-  ## inverse variance weighted MR 
 IVW_beta <- NULL; IVW_se <- NULL
 for(i in 1:ncol(IS_Beta)){
-  ## Pooled estimate from inverse-variance weighted method
   IVW_beta <- c(IVW_beta,sum(x*y[,i]/sigmay[,i]^2)/sum(x^2/sigmay[,i]^2))
   IVW_se <- c(IVW_se,sqrt(1/sum(x^2/sigmay[,i]^2)))
 }
@@ -1282,12 +1253,10 @@ colnames(is_SWE_tab1) <- c("Metabolite","IVW_est","IVW_se","LogLikelihood_est","
 # write.table(is_SWE_tab1,"is_SWE_tab1.txt")
 
   ## MR Egger regression
-
 BetaXG = is_magic_snps$effect 
 seBetaXG = is_magic_snps$stderr
 BetaYG =  IS_Beta
 seBetaYG = IS_SE 
-
 MREgger <- list()
 for (i in 1:ncol(IS_Beta)){
   BYG             = BetaYG[,i]*sign(BetaXG)   
@@ -1325,8 +1294,7 @@ is_MREgger_SWE$Metabolite <- n
 # write.table(is_MREgger_SWE,"is_MREGGER_SWE.txt")
 # write.table(is_SWE_tab1,"is_MREgger_SWE.txt")
 
-  ## Bilirubin ##
-
+  ## Bilirubin
 df <- data.frame(x = is_magic_snps$effect, y = IS_Beta$Bilirubin,
                  ymin = IS_Beta$Bilirubin - (1.96*IS_SE$Bilirubin),
                  ymax = IS_Beta$Bilirubin + (1.96*IS_SE$Bilirubin),
@@ -1366,7 +1334,6 @@ ggplot(data = dfunnel,aes(x = x,y = abs(y))) +
   ylim(0,10) + xlim(-6,6)
 
   ## Trihydroxy
-
 df <- data.frame(x = is_magic_snps$effect, y = IS_Beta$Trihydroxy,
                  ymin = IS_Beta$Trihydroxy - (1.96*IS_SE$Trihydroxy),
                  ymax = IS_Beta$Trihydroxy + (1.96*IS_SE$Trihydroxy),
@@ -1405,27 +1372,22 @@ ggplot(data = dfunnel,aes(x = x,y = abs(y))) +
   labs(y="IV strength",x="IV estimate") +
   ylim(0,8) + xlim(-7,7)
 
-##### ##### KORA bilirubin ##### #####
+##### KORA Bilirubin
 
 b3_kora <- read.table("b3_kora.txt")
 
-  ## IVW and loglik methods
+  ## IVW 
 is_magic_snps <- is_magic_snps[order(match(is_magic_snps$snp,as.character(b3_kora[,1]))),]
-
 x = is_magic_snps$effect 
 sigmax = is_magic_snps$stderr
 y = b3_kora$b_b3_kora
 sigmay = b3_kora$s_b3_kora
-
-  ## inverse variance weighted 
 IVW_beta <- NULL;IVW_se <- NULL
 IVW_beta <- c(IVW_beta,sum(x*y/sigmay^2)/sum(x^2/sigmay^2))
 IVW_se <- c(IVW_se,sqrt(1/sum(x^2/sigmay^2)))
 
   ## likelihood 
 loglik_beta <- NULL;loglik_se <- NULL;hetero_pval <- NULL
-
-  ## Pooled estimate from likelihood-based method and pval for heterogeneity
 loglikelihood <- function(param) {             
   return(1/2*sum((x-param[1:length(x)])^2/sigmax^2)+1/2*
            sum((y-param[length(x)+1]*param[1:length(x)])^2/sigmay^2)) }
@@ -1439,12 +1401,10 @@ colnames(is_KORA_tab1) <- c("Metabolite","IVW_est","IVW_se","LogLikelihood_est",
 # write.table(is_KORA_tab1,"is_KORA_tab1.txt")
 
   ## MR Egger regression
-
 BetaXG = is_magic_snps$effect 
 seBetaXG = is_magic_snps$stderr
 BetaYG =  b3_kora$b_b3_kora
 seBetaYG = b3_kora$s_b3_kora 
-
 MREgger <- NULL
   BYG             = BetaYG*sign(BetaXG)   
   BXG             = abs(BetaXG)         
@@ -1472,7 +1432,6 @@ MREgger <- NULL
 # write.table(MREgger,"MREggerBilirubin_kora.txt")
 
   ## KORA Bilirubin 
-
 df <- data.frame(x = is_magic_snps$effect, y = b3_kora$b_b3_kora,
                  ymin = b3_kora$b_b3_kora - (1.96*b3_kora$s_b3_kora),
                  ymax = b3_kora$b_b3_kora + (1.96*b3_kora$s_b3_kora),
@@ -1512,7 +1471,8 @@ ggplot(data = dfunnel,aes(x = x,y = abs(y))) +
   ylim(0,8) + xlim(-17,17)
 
 
-
+################################################################################################################################
+################################################################################################################################
 
 
 
