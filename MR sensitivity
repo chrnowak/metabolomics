@@ -2,6 +2,8 @@
 ######## MR sensitivity analyses: plots, IVW, loglik estimates, MR Egger ############# ###########
 ############################################### ############ ############ ############ ###########
 
+### NOTE: the plot part is repective - given the <20 metabolites in total that required individuals figure parameter adj. that way was most economical
+
 dir<-("User/Scripts")
 setwd(dir)
 
