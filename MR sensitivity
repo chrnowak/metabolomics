@@ -2,9 +2,9 @@
 ######## MR sensitivity analyses: plots, IVW, loglik estimates, MR Egger ############# ###########
 ############################################### ############ ############ ############ ###########
 
-### NOTE: the plot part is repective - given the <20 metabolites in total that required individuals figure parameter adj. that way was most economical
+### NOTE: the plot part is repective - given the <20 metabolites in total that required individual figure parameter adj. that way was most economical
 
-dir<-("User/Scripts")
+dir<-("... /Scripts")
 setwd(dir)
 
 library(plyr)
@@ -17,13 +17,13 @@ library(ggplot2)
 ##### GRS SNPs individual associations with IR are NOT REPORTED by Scott et al. #####
 ##### resort to associations with log-HOMA-IR and CIR in MAGIC ######################
 
-##### File upload and creation  ##### ##### ##### ##### ##### 
+##### File upload and creation  ##### ##### ##### ##### ##### ##### ##### ##### ##### 
 
-  # Scott et al. Suppl. Table: snps in IR and IS GRS
-ir_snps <- read.delim("scott_ir_snps.txt")
-is_snps <- read.delim("scott_is_snps.txt")
+  ## Scott et al. Suppl. Table: SNPs in Insulin resistance (IR) and Insulin secretion (IS) GRS
+ir_snps <- read.delim("~/scott_ir_snps.txt")
+is_snps <- read.delim("~/scott_is_snps.txt")
 
-  # GWAS summary results from MAGIC consortium for logHOMA-IR and CIR (z-score)
+  ## GWAS summary results from MAGIC consortium for HOMA-IR (natural log) and corrected insulin response (CIR, z-transformed)
 magic_is <- read.delim("~/Desktop/ ... /MAGIC_INSULIN_SECRETION_CIR_ISI_for_release_HMrel27.txt")
 magic_ir <- read.delim("~/Desktop ... /MAGIC_ln_HOMA.txt")
 
@@ -31,20 +31,21 @@ magic_ir <- read.delim("~/Desktop ... /MAGIC_ln_HOMA.txt")
 ##### ##### ##### ##### Insulin Resistance ##### ##### ##### ##### ##### ##### ##### ##### ##### ##### ##### ##### ##### 
 ##### ##### ##### #####  ##### ##### ##### ##### ##### ##### ##### ##### ##### ##### ##### ##### ##### ##### ##### ##### 
 
-  # select IR snps
+  ## select IR snps
 ir_magic_snps <- magic_ir[which(magic_ir$snp %in% ir_snps$rs_id),] 
 ir_magic_snps <- ir_magic_snps[order(match(ir_magic_snps$snp,ir_snps$rs_id)),]
   
-  # align MAGIC coded with IR risk allele
+  ## align MAGIC coded with IR risk allele
 irrisk <- tolower(ir_snps$IR_allele)
 ir_magic_snps[which((as.character(ir_magic_snps$coded.allele)==irrisk)==F),]$effect <-
   - ir_magic_snps[which((as.character(ir_magic_snps$coded.allele)==irrisk)==F),]$effect
 
-  # Forest plot: genetic associations with risk factors (SD-unit tf'd log-HOMA-IR)
+  ## Forest plot: genetic associations with risk factors (SD-unit tf'd log-HOMA-IR)
+  ## SD of logHOMA-IR across MAGIC cohorts sd = 0.2280594  
 forest.default(ir_magic_snps$effect/0.2280594,sei=ir_magic_snps$stderr/0.2280594,psize=1,slab=ir_magic_snps$snp,
     main="IV-Exposure association MAGIC (n=46,186)",xlab="log-HOMA-IR, 95% CI (SD-units)")
 
-  # PIVUS and TWGE metabolomics/genotype dosages and merge
+  ## PIVUS and TWGE metabolomics/genotype dosages and merge
 irSNP_P <- data.frame(read.table("~/Desktop/PLOS Genet submission/Scripts/plink PIVUS.raw", header=TRUE, quote="\""))
 irSNP_TWGE <- data.frame(read.table("~/Desktop/PLOS Genet submission/Scripts/plink TWGE.raw"))
 P70 <- read.table("Pivus70_IR.txt")
@@ -58,17 +59,17 @@ P70<-merge(P70,irSNP_P,by="id")
 
 TWGE$AGE<-TWGE$age
 TWGE$SEX <-  - (TWGE$sex -2) 
-P70$AGE<-P70$age70.x
-P70$SEX<-P70$kn
+P70$AGE <- P70$age70.x
+P70$SEX <- P70$kn
 COMB <- merge(TWGE,P70,all.x=T,all.y=T)
 COMB$Cohort_1 <- 0
 COMB$Cohort_1[which(is.na(COMB$piusnr))] <- 1 # 1 is TWGE
 
-  # as rs_ids in the cohorts are reported as "rs12345_C" ie. coded allele -> string split
+  ## rs_ids in the cohorts are reported as "rs12345_C" ie. coded allele -> string split
 split_1 <- str_split_fixed(names(COMB)[(grep("^rs",names(COMB)))], "_", 2)
 names(COMB)[grep("^rs",names(COMB))] <- split_1[,1]
 
-  # align with IR-increasing allele
+  ## align with IR-increasing allele
 COMB[,which(names(COMB) %in% c("rs4846565","rs10195252","rs2943645","rs17036328", "rs6822892","rs4865796","rs459193","rs2745353" ))] =
   -(COMB[,which(names(COMB) %in% c("rs4846565","rs10195252","rs2943645","rs17036328", "rs6822892","rs4865796","rs459193","rs2745353" ))]-2)
 
