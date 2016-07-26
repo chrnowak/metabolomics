@@ -2,9 +2,10 @@
 ######## MR sensitivity analyses: plots, IVW, loglik estimates, MR Egger ############# ###########
 ############################ Chris Nowak July 2016 ######### ############ ########### ############
 
-### NOTE: the plot part is repective - given the <20 metabolites in total that required individual figure parameter adj. that way was most economical
+### NOTE: the plot part is repetive - given the <20 metabolites in total that required individual 
+### figure parameter adjustment, that way was most economical
 
-dir<-("... /Scripts")
+dir <- ("... /Scripts")
 setwd(dir)
 
 library(plyr)
@@ -14,10 +15,10 @@ library(gtx)
 library(stringr)
 library(ggplot2)
 
-##### GRS SNPs individual associations with IR are NOT REPORTED by Scott et al. #####
+##### GRS SNPs individual associations with IR are not reported by Scott et al. #####
 ##### resort to associations with log-HOMA-IR and CIR in MAGIC ######################
 
-##### File upload and creation  ##### ##### ##### ##### ##### ##### ##### ##### ##### 
+##### File upload and creation  
 
   ## Scott et al. Suppl. Table: SNPs in Insulin resistance (IR) and Insulin secretion (IS) GRS
 ir_snps <- read.delim("~/scott_ir_snps.txt")
@@ -40,7 +41,7 @@ irrisk <- tolower(ir_snps$IR_allele)
 ir_magic_snps[which((as.character(ir_magic_snps$coded.allele)==irrisk)==F),]$effect <-
   - ir_magic_snps[which((as.character(ir_magic_snps$coded.allele)==irrisk)==F),]$effect
 
-  ## Forest plot: genetic associations with risk factors (SD-unit tf'd log-HOMA-IR)
+  ## Forest plot: genetic associations with risk factors (SD-unit log-HOMA-IR)
   ## SD of logHOMA-IR across MAGIC cohorts sd = 0.2280594  
 forest.default(ir_magic_snps$effect/0.2280594,sei=ir_magic_snps$stderr/0.2280594,psize=1,slab=ir_magic_snps$snp,
     main="IV-Exposure association MAGIC (n=46,186)",xlab="log-HOMA-IR, 95% CI (SD-units)")
@@ -57,8 +58,8 @@ TWGE <- TWGE[!duplicated(TWGE$twinnr),]
 irSNP_P$id<-irSNP_P$FID
 P70<-merge(P70,irSNP_P,by="id")
 
-TWGE$AGE<-TWGE$age
-TWGE$SEX <-  - (TWGE$sex -2) 
+TWGE$AGE <- TWGE$age
+TWGE$SEX <-  - (TWGE$sex -2) # to make 1=female, 0=male is in PIVUS
 P70$AGE <- P70$age70.x
 P70$SEX <- P70$kn
 COMB <- merge(TWGE,P70,all.x=T,all.y=T)
@@ -69,12 +70,12 @@ COMB$Cohort_1[which(is.na(COMB$piusnr))] <- 1 # 1 is TWGE
 split_1 <- str_split_fixed(names(COMB)[(grep("^rs",names(COMB)))], "_", 2)
 names(COMB)[grep("^rs",names(COMB))] <- split_1[,1]
 
-  ## align with IR-increasing allele
+  ## align with IR-increasing allele 
 COMB[,which(names(COMB) %in% c("rs4846565","rs10195252","rs2943645","rs17036328", "rs6822892","rs4865796","rs459193","rs2745353" ))] =
   -(COMB[,which(names(COMB) %in% c("rs4846565","rs10195252","rs2943645","rs17036328", "rs6822892","rs4865796","rs459193","rs2745353" ))]-2)
 
 ##### ##### MR Sensitivity: IVW, loglikelihood, MR Egger estimates ##### ##### ##### ##### #####
-  ## association in MAGIC are per log-HOMA-IR unit  
+  ## associations in MAGIC are per log-HOMA-IR unit  
   ## for comparison converted to SD-unit by division with SD(logHOMA-IR) = 0.2280594 (MAGIC cohorts)
 
   ## snp names order
@@ -84,7 +85,7 @@ metabo_0 <- c("Trihydroxy_5b_cholanoic_acid","gamma_Tocopherol","Oleic_acid","MA
 metabo <- names(COMB)[which(names(COMB) %in% metabo_0)]
 
   ## per-snp associations with metabolite - age, sex, cohort adjusted
-IR_Beta<-NULL;IR_SE<-NULL;IR_P<-NULL
+IR_Beta <- NULL;IR_SE <- NULL;IR_P <- NULL
 for (i in which(names(COMB) %in% ir_magic_snps$snp)){
   IR_Beta <- rbind(IR_Beta,sapply(which(names(COMB) %in% metabo), function(x) 
     summary(lm(scale(COMB[,x]) ~ COMB$AGE + COMB$SEX  + COMB$Cohort_1 + COMB[,i]))$coef[5,1]))
@@ -100,8 +101,8 @@ colnames(IR_SE) <- metabo
 rownames(IR_SE) <- irsnps_for_MR_names
 colnames(IR_P) <- metabo
 rownames(IR_P) <- irsnps_for_MR_names
-IR_Beta<-data.frame(IR_Beta)
-IR_SE<-data.frame(IR_SE)
+IR_Beta <- data.frame(IR_Beta)
+IR_SE <- data.frame(IR_SE)
 
   #### IVW and loglik: Burgess et al. 2015 (PMID 25773750) - App A.2 & A.3 ####
 
