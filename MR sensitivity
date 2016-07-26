@@ -1,6 +1,6 @@
 ################################################ ############ ############ ########### ###########
 ######## MR sensitivity analyses: plots, IVW, loglik estimates, MR Egger ############# ###########
-############################################### ############ ############ ############ ###########
+############################ Chris Nowak July 2016 ######### ############ ########### ############
 
 ### NOTE: the plot part is repective - given the <20 metabolites in total that required individual figure parameter adj. that way was most economical
 
