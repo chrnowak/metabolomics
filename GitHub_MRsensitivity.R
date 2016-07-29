@@ -1,0 +1,1476 @@
+################################################ ############ ############ ########### ###########
+######## MR sensitivity analyses: plots, IVW, loglik estimates, MR Egger ############# ###########
+############################################### ############ ############ ############ ###########
+
+dir <- ("... /Scripts")
+setwd(dir)
+
+library(metafor)
+library(gtx)
+library(stringr)
+library(ggplot2)
+
+  ### GRS SNPs individual associations with IR are not reported by Scott et al. #####
+  ### resort to associations with log-HOMA-IR and CIR in MAGIC ######################
+
+  ## File upload and creation  
+  # Scott et al. Suppl. Table: snps in IR and IS GRS
+ir_snps <- read.delim("scott_ir_snps.txt")
+is_snps <- read.delim("scott_is_snps.txt")
+  # GWAS summary results from MAGIC consortium for logHOMA-IR and CIR (z-score)
+magic_is <- read.delim("~/Desktop/UKBB_project/QCtool_SNP_extraction_IR_InSecr/MAGIC_INSULIN_SECRETION_CIR_ISI_for_release_HMrel27.txt")
+magic_ir <- read.delim("~/Desktop/UKBB_project/QCtool_SNP_extraction_IR_InSecr/MAGIC_ln_HOMA.txt")
+
+##### ##### ##### #####  ##### ##### ##### ##### ##### ##### ##### 
+##### ##### ##### ##### Insulin Resistance ##### ##### ##### ##### 
+##### ##### ##### #####  ##### ##### ##### ##### ##### ##### ##### 
+
+ ## select IR snps
+ir_magic_snps <- magic_ir[which(magic_ir$snp %in% ir_snps$rs_id),] 
+ir_magic_snps <- ir_magic_snps[order(match(ir_magic_snps$snp,ir_snps$rs_id)),]
+ ## align MAGIC coded with IR risk allele
+irrisk <- tolower(ir_snps$IR_allele)
+ir_magic_snps[which((as.character(ir_magic_snps$coded.allele)==irrisk)==F),]$effect <-
+  - ir_magic_snps[which((as.character(ir_magic_snps$coded.allele)==irrisk)==F),]$effect
+ 
+ ## Forest plot: genetic associations with risk factor (SD-unit-transformed log-HOMA-IR, sd=0.2280594)
+forest.default(ir_magic_snps$effect/0.2280594,sei=ir_magic_snps$stderr/0.2280594,psize=1,slab=ir_magic_snps$snp,
+               main="IV-Exposure association MAGIC (n=46,186)",xlab="log-HOMA-IR, 95% CI (SD-units)")
+
+COMB <- read.table("MR_sensitivity_PTmaster.txt")
+COMB$Cohort_1 <- 0
+COMB$Cohort_1[which(is.na(COMB$piusnr))] <- 1 # 1 is TWGE
+
+ ## rs_ids reported as "rs12345_C" -> string split
+split_1 <- str_split_fixed(names(COMB)[(grep("^rs",names(COMB)))], "_", 2)
+names(COMB)[grep("^rs",names(COMB))] <- split_1[,1]
+
+ ## align with IR-increasing allele
+COMB[,which(names(COMB) %in% c("rs4846565","rs10195252","rs2943645","rs17036328", "rs6822892","rs4865796","rs459193","rs2745353" ))] =
+  -(COMB[,which(names(COMB) %in% c("rs4846565","rs10195252","rs2943645","rs17036328", "rs6822892","rs4865796","rs459193","rs2745353" ))]-2)
+
+#### MR Sensitivity: IVW, loglikelihood, MR Egger 
+  ## for comparison, MAGIC association converted to SD-unit SD(logHOMA-IR) = 0.2280594 
+irsnps_for_MR_names <- names(COMB)[which(names(COMB) %in% ir_magic_snps$snp)]
+  ## the sign. metabolites
+metabo_0 <- c("Trihydroxy_5b_cholanoic_acid","gamma_Tocopherol","Oleic_acid","MAG_14_0","MAG_18_1","MAG_18_2","L_Tyrosine","Palmitoleic_acid","Hippuric_acid")
+metabo <- names(COMB)[which(names(COMB) %in% metabo_0)]
+
+  ## per-snp associations with metabolite - age, sex, cohort adjusted
+IR_Beta <- NULL;IR_SE <- NULL;IR_P <- NULL
+for (i in which(names(COMB) %in% ir_magic_snps$snp)){
+  IR_Beta <- rbind(IR_Beta,sapply(which(names(COMB) %in% metabo), function(x) 
+    summary(lm(scale(COMB[,x]) ~ COMB$AGE + COMB$SEX  + COMB$Cohort_1 + COMB[,i]))$coef[5,1]))
+  IR_SE <- rbind(IR_SE,sapply(which(names(COMB) %in% metabo), function(x) 
+    summary(lm(scale(COMB[,x]) ~ COMB$AGE + COMB$SEX + COMB$Cohort_1 + COMB[,i]))$coef[5,2]))
+  IR_P <- rbind(IR_P,sapply(which(names(COMB) %in% metabo), function(x) 
+    summary(lm(scale(COMB[,x]) ~ COMB$AGE + COMB$SEX + COMB$Cohort_1 + COMB[,i]))$coef[5,4]))
+}
+
+colnames(IR_Beta) <- metabo; rownames(IR_Beta) <- irsnps_for_MR_names
+colnames(IR_SE) <- metabo; rownames(IR_SE) <- irsnps_for_MR_names
+colnames(IR_P) <- metabo; rownames(IR_P) <- irsnps_for_MR_names
+IR_Beta <- data.frame(IR_Beta); IR_SE <- data.frame(IR_SE)
+
+    ## IVW and loglik methods: Burgess et al. 2015 (PMID 25773750) - Appendix A.2 & A.3 
+x = ir_magic_snps$effect/0.2280594 
+sigmax = ir_magic_snps$stderr/0.2280594
+y = IR_Beta
+sigmay = IR_SE
+
+    ## IVW MR with uncorrelated variants (Appendix A.2)
+IVW_beta <- NULL; IVW_se <- NULL
+for(i in 1:ncol(IR_Beta)){
+  ## Pooled estimate from inverse-variance weighted method
+  IVW_beta <- c(IVW_beta,sum(x*y[,i]/sigmay[,i]^2)/sum(x^2/sigmay[,i]^2))
+  IVW_se <- c(IVW_se,sqrt(1/sum(x^2/sigmay[,i]^2)))
+}
+
+    ## likelihood based two-sample MR with uncorrelated variants (A.3)
+loglik_beta <- NULL; loglik_se <- NULL; hetero_pval <- NULL
+for(i in 1:ncol(IR_Beta)){
+  ## Pooled estimate from likelihood-based method and pval for heterogeneity
+  loglikelihood <- function(param) {             
+    return(1/2*sum((x-param[1:length(x)])^2/sigmax^2)+1/2*
+             sum((y[,i]-param[length(x)+1]*param[1:length(x)])^2/sigmay[,i]^2)) }
+  opt = optim(c(x, sum(x*y[,i]/sigmay[,i]^2)/sum(x^2/sigmay[,i]^2)),loglikelihood, hessian=TRUE, control = list(maxit=25000))
+  loglik_beta <- c(loglik_beta,opt$par[length(x)+1])
+  loglik_se <- c(loglik_se,sqrt(solve(opt$hessian)[length(x)+1,length(x)+1]))
+  hetero_pval <- c(hetero_pval,round(pchisq(2*opt$value, df=length(x)-1, lower.tail=FALSE),3))
+}
+
+SWE_tab1 <- data.frame(cbind(colnames(IR_Beta), IVW_beta, IVW_se, loglik_beta, loglik_se, hetero_pval))
+colnames(SWE_tab1) <- c("Metabolite","IVW_est","IVW_se","LogLikelihood_est","LogLikelihood_se","Heterogeneity_pval")
+
+    ## MR Egger regression: Bowden et al. 2015 Int J Epi - Suppl Appendix (PMID 26050253) 
+BetaXG = ir_magic_snps$effect/0.2280594 
+seBetaXG = ir_magic_snps$stderr/0.2280594
+BetaYG =  IR_Beta
+seBetaYG = IR_SE 
+MREgger <- list()
+for (i in 1:ncol(IR_Beta)){
+  BYG             = BetaYG[,i]*sign(BetaXG)   
+  BXG             = abs(BetaXG)         
+  MREggerFit      = summary(lm(BYG ~  BXG,weights=1/seBetaYG[,i]^2))
+  MREggerBeta1    = MREggerFit$coef[1,1]
+  SE1             = MREggerFit$coef[1,2]/min(1,MREggerFit$sigma)
+  DF              = length(BetaYG[,i])-2
+  MRBeta1_p       = 2*(1-pt(abs(MREggerBeta1/SE1),DF))
+  MRBeta1_CI      = MREggerBeta1 + c(-1,1)*qt(df=DF, 0.975)*SE1
+  ## Inference with correct standard errors
+  MREggerBeta0   = MREggerFit$coef[1,1]
+  MREggerBeta1   = MREggerFit$coef[2,1]
+  SE0            = MREggerFit$coef[1,2]/min(1,MREggerFit$sigma)
+  SE1            = MREggerFit$coef[2,2]/min(1,MREggerFit$sigma)
+  DF             = length(BetaYG[,i])-2
+  MRBeta0_p      = 2*(1-pt(abs(MREggerBeta0/SE0),DF))
+  MRBeta1_p      = 2*(1-pt(abs(MREggerBeta1/SE1),DF))
+  MRBeta0_CI     = MREggerBeta0 + c(-1,1)*qt(df=DF, 0.975)*SE0
+  MRBeta1_CI     = MREggerBeta1 + c(-1,1)*qt(df=DF, 0.975)*SE1  
+  MREggerResults      = matrix(nrow = 2,ncol = 5)
+  MREggerResults[1,] = c(MREggerBeta0,SE0,MRBeta0_CI,MRBeta0_p)
+  MREggerResults[2,] = c(MREggerBeta1,SE1,MRBeta1_CI,MRBeta1_p)
+  colnames(MREggerResults) <-c("est","se","lci","uci","pval")
+  MREgger[[i]] <- MREggerResults
+}
+
+MREgger_SWE <- data.frame(do.call(rbind.data.frame, MREgger))
+n <- NULL
+for (i in 1:9){
+  n <- c(n,rep(names(IR_Beta[i]),2))
+}
+MREgger_SWE$Metabolite <- n  
+
+# write.table(MREgger_SWE,"MREGGER_SWE.txt")
+
+#### Plots: Scatter and Funnel per metabolite 
+
+## Oleic Acid ##
+df <- data.frame(x = ir_magic_snps$effect/0.2280594, y = IR_Beta$Oleic_acid,
+                 ymin = IR_Beta$Oleic_acid - (1.96*IR_SE$Oleic_acid),
+                 ymax = IR_Beta$Oleic_acid + (1.96*IR_SE$Oleic_acid),
+                 xmin = ir_magic_snps$effect/0.2280594 - (1.96*(ir_magic_snps$stderr/0.2280594)),
+                 xmax = ir_magic_snps$effect/0.2280594 + (1.96*(ir_magic_snps$stderr/0.2280594)))
+                 
+  ## Scatter: pdf 9x9 
+ggplot(data = df,aes(x = x,y = y)) + geom_point() + 
+  # geom_text(aes(label=irsnps_for_MR_names),cex=4,col="darkblue") +
+  geom_errorbar(aes(ymin = ymin,ymax = ymax)) + 
+  geom_errorbarh(aes(xmin = xmin,xmax = xmax)) +
+  # geom_smooth(method='lm',formula=y~x,se=F,col="black",fullrange=T, linetype="dotted") + ## simple linear fit through points - not weighted by association strength
+  geom_hline(aes(yintercept=0)) +
+  geom_vline(aes(xintercept=0)) +
+  ggtitle("Insulin resistance - Oleic acid - PIVUS & TwinGene (n=2,613)") + 
+  theme(axis.text=element_text(size=12),axis.title=element_text(size=16)) +
+  labs(x="Genetic association with IR (log-HOMA-IR in SD-units, MAGIC, n=46,186)",
+       y="Genetic association with plasma metabolite (SD-units)") +
+  xlim(-0.02,0.12) + ylim(-0.03,0.03) +
+  geom_abline(slope = IVW_beta[which(colnames(IR_Beta) =="Oleic_acid")], intercept = 0, col="red") +
+  geom_abline(slope = loglik_beta[which(colnames(IR_Beta) =="Oleic_acid")], intercept = 0, col="blue") +
+  geom_abline(slope = MREgger_SWE[which(MREgger_SWE$Metabolite=="Oleic_acid")[2],1], 
+              intercept = MREgger_SWE[which(MREgger_SWE$Metabolite=="Oleic_acid")[1],1], linetype="dotted") 
+
+seiv <- abs(df$y/df$x) * sqrt(((IR_SE$Oleic_acid/IR_Beta$Oleic_acid)^2) + ((ir_magic_snps$stderr/df$x)^2))
+dfunnel <- data.frame(y = df$x/IR_SE$Oleic_acid,x = df$y/df$x,
+                      xmin = df$y/df$x - (1.96*seiv), xmax = df$y/df$x + (1.96*seiv))   
+                      
+  ## Funnel: pdf 7x7    
+ggplot(data = dfunnel,aes(x = x,y = y)) + 
+  geom_point(size=2) + 
+  geom_text(aes(label=irsnps_for_MR_names),vjust=-0.4) +
+  geom_errorbarh(aes(xmin = xmin,xmax = xmax)) +
+  geom_vline(xintercept=0) +
+  geom_vline(xintercept=IVW_beta[which(colnames(IR_Beta) =="Oleic_acid")],col="red") +
+  geom_vline(xintercept=loglik_beta[which(colnames(IR_Beta) =="Oleic_acid")],col="blue") +
+  ggtitle("Insulin resistance - Oleic acid - Instrument strength against IV estimate") +
+  labs(y="IV strength",x="IV estimate") +
+  ylim(0,16) + xlim(-0.5,0.5)
+
+## Palmitoleic acid ##
+df <- data.frame(x = ir_magic_snps$effect/0.2280594, y = IR_Beta$Palmitoleic_acid,
+                 ymin = IR_Beta$Palmitoleic_acid - (1.96*IR_SE$Palmitoleic_acid),ymax = IR_Beta$Palmitoleic_acid + (1.96*IR_SE$Palmitoleic_acid),
+                 xmin = ir_magic_snps$effect/0.2280594 - (1.96*(ir_magic_snps$stderr/0.2280594)),
+                 xmax = ir_magic_snps$effect/0.2280594 + (1.96*(ir_magic_snps$stderr/0.2280594)))
+
+ggplot(data = df,aes(x = x,y = y)) + geom_point() + 
+  # geom_text(aes(label=irsnps_for_MR_names),cex=4,col="darkblue") +
+  geom_errorbar(aes(ymin = ymin,ymax = ymax)) + 
+  geom_errorbarh(aes(xmin = xmin,xmax = xmax)) +
+  # geom_smooth(method='lm',formula=y~x,se=F,col="black",fullrange=T, linetype="dotted") +
+  geom_hline(aes(yintercept=0)) +
+  geom_vline(aes(xintercept=0)) +
+  ggtitle("Insulin resistance - Palmitoleic acid - PIVUS & TwinGene (n=2,613)") + 
+  theme(axis.text=element_text(size=12),axis.title=element_text(size=16)) +
+  labs(x="Genetic association with IR (log-HOMA-IR in SD-units, MAGIC, n=46,186)",
+       y="Genetic association with plasma metabolite (SD-units)") +
+  geom_abline(slope = IVW_beta[which(colnames(IR_Beta) =="Palmitoleic_acid")], intercept = 0, col="red") +
+  geom_abline(slope = loglik_beta[which(colnames(IR_Beta) =="Palmitoleic_acid")], intercept = 0, col="blue") +
+  xlim(-0.04,0.14) +
+  geom_abline(slope = MREgger_SWE[which(MREgger_SWE$Metabolite=="Palmitoleic_acid")[2],1], 
+              intercept = MREgger_SWE[which(MREgger_SWE$Metabolite=="Palmitoleic_acid")[1],1], linetype="dotted")  
+
+seiv <- abs(df$y/df$x) * sqrt(((IR_SE$Palmitoleic_acid/IR_Beta$Palmitoleic_acid)^2) + ((ir_magic_snps$stderr/df$x)^2))
+dfunnel <- data.frame(y = df$x/IR_SE$Palmitoleic_acid,x = df$y/df$x,xmin = df$y/df$x - (1.96*seiv),xmax = df$y/df$x + (1.96*seiv))
+
+ggplot(data = dfunnel,aes(x = x,y = y)) + 
+  geom_point(size=2) + 
+  geom_text(aes(label=irsnps_for_MR_names),vjust=-0.4) +
+  geom_errorbarh(aes(xmin = xmin,xmax = xmax)) +
+  geom_vline(xintercept=0) +
+  geom_vline(xintercept=IVW_beta[which(colnames(IR_Beta) =="Palmitoleic_acid")],col="red") +
+  geom_vline(xintercept=loglik_beta[which(colnames(IR_Beta) =="Palmitoleic_acid")],col="blue") +
+  ggtitle("Insulin resistance - Palmitoleic acid - Instrument strength against IV estimate") +
+  labs(y="IV strength",x="IV estimate") +
+  ylim(0,5) + xlim(-2,2)
+
+## Hippuric acid ##
+df <- data.frame(x = ir_magic_snps$effect/0.2280594, y = IR_Beta$Hippuric_acid,
+                 ymin = IR_Beta$Hippuric_acid - (1.96*IR_SE$Hippuric_acid),ymax = IR_Beta$Hippuric_acid + (1.96*IR_SE$Hippuric_acid),
+                 xmin = ir_magic_snps$effect/0.2280594 - (1.96*(ir_magic_snps$stderr/0.2280594)),
+                 xmax = ir_magic_snps$effect/0.2280594 + (1.96*(ir_magic_snps$stderr/0.2280594)))
+
+ggplot(data = df,aes(x = x,y = y)) + geom_point() + 
+  # geom_text(aes(label=irsnps_for_MR_names),cex=4,col="darkblue") +
+  geom_errorbar(aes(ymin = ymin,ymax = ymax)) + 
+  geom_errorbarh(aes(xmin = xmin,xmax = xmax)) +
+  # geom_smooth(method='lm',formula=y~x,se=F,col="black",fullrange=T, linetype="dotted") +
+  geom_hline(aes(yintercept=0)) +
+  geom_vline(aes(xintercept=0)) +
+  ggtitle("Insulin resistance - Hippuric acid - PIVUS & TwinGene (n=2,613)") + 
+  theme(axis.text=element_text(size=12),axis.title=element_text(size=16)) +
+  labs(x="Genetic association with IR (log-HOMA-IR in SD-units, MAGIC, n=46,186)",
+       y="Genetic association with plasma metabolite (SD-units)") +
+  geom_abline(slope = IVW_beta[which(colnames(IR_Beta) =="Hippuric_acid")], intercept = 0, col="red") +
+  geom_abline(slope = loglik_beta[which(colnames(IR_Beta) =="Hippuric_acid")], intercept = 0, col="blue") +
+  xlim(-0.04,0.14) +
+  geom_abline(slope = MREgger_SWE[which(MREgger_SWE$Metabolite=="Hippuric_acid")[2],1], 
+              intercept = MREgger_SWE[which(MREgger_SWE$Metabolite=="Hippuric_acid")[1],1], linetype="dotted") 
+
+seiv <- abs(df$y/df$x) * sqrt(((IR_SE$Hippuric_acid/IR_Beta$Hippuric_acid)^2) + ((ir_magic_snps$stderr/df$x)^2))
+dfunnel <- data.frame(y = df$x/IR_SE$Hippuric_acid,x = df$y/df$x,xmin = df$y/df$x - (1.96*seiv),xmax = df$y/df$x + (1.96*seiv))
+
+ggplot(data = dfunnel,aes(x = x,y = y)) + 
+  geom_point(size=2) + 
+  geom_text(aes(label=irsnps_for_MR_names),vjust=-0.4) +
+  geom_errorbarh(aes(xmin = xmin,xmax = xmax)) +
+  geom_vline(xintercept=0) +
+  geom_vline(xintercept=IVW_beta[which(colnames(IR_Beta) =="Hippuric_acid")],col="red") +
+  geom_vline(xintercept=loglik_beta[which(colnames(IR_Beta) =="Hippuric_acid")],col="blue") +
+  ggtitle("Insulin resistance - Hippuric acid - Instrument strength against IV estimate") +
+  labs(y="IV strength",x="IV estimate") +
+  ylim(0,3.5) + xlim(-3,3)
+
+## Tyrosine ##
+df <- data.frame(x = ir_magic_snps$effect/0.2280594, y = IR_Beta$L_Tyrosine,
+                 ymin = IR_Beta$L_Tyrosine - (1.96*IR_SE$L_Tyrosine),ymax = IR_Beta$L_Tyrosine + (1.96*IR_SE$L_Tyrosine),
+                 xmin = ir_magic_snps$effect/0.2280594 - (1.96*(ir_magic_snps$stderr/0.2280594)),
+                 xmax = ir_magic_snps$effect/0.2280594 + (1.96*(ir_magic_snps$stderr/0.2280594)))
+
+ggplot(data = df,aes(x = x,y = y)) + geom_point() + 
+  # geom_text(aes(label=irsnps_for_MR_names),cex=4,col="darkblue") +
+  geom_errorbar(aes(ymin = ymin,ymax = ymax)) + 
+  geom_errorbarh(aes(xmin = xmin,xmax = xmax)) +
+  # geom_smooth(method='lm',formula=y~x,se=F,col="black",fullrange=T, linetype="dotted") +
+  geom_hline(aes(yintercept=0)) +
+  geom_vline(aes(xintercept=0)) +
+  ggtitle("Insulin resistance - Tyrosine - PIVUS & TwinGene (n=2,613)") + 
+  theme(axis.text=element_text(size=12),axis.title=element_text(size=16)) +
+  labs(x="Genetic association with IR (log-HOMA-IR in SD-units, MAGIC, n=46,186)",
+       y="Genetic association with plasma metabolite (SD-units)") +
+  geom_abline(slope = IVW_beta[which(colnames(IR_Beta) =="L_Tyrosine")], intercept = 0, col="red") +
+  geom_abline(slope = loglik_beta[which(colnames(IR_Beta) =="L_Tyrosine")], intercept = 0, col="blue") +
+  xlim(-0.04,0.14) +
+  geom_abline(slope = MREgger_SWE[which(MREgger_SWE$Metabolite=="L_Tyrosine")[2],1], 
+              intercept = MREgger_SWE[which(MREgger_SWE$Metabolite=="L_Tyrosine")[1],1], linetype="dotted") 
+
+seiv <- abs(df$y/df$x) * sqrt(((IR_SE$L_Tyrosine/IR_Beta$L_Tyrosine)^2) + ((ir_magic_snps$stderr/df$x)^2))
+dfunnel <- data.frame(y = df$x/IR_SE$L_Tyrosine,x = df$y/df$x,xmin = df$y/df$x - (1.96*seiv),xmax = df$y/df$x + (1.96*seiv))
+
+ggplot(data = dfunnel,aes(x = x,y = y)) + 
+  geom_point(size=2) + 
+  geom_text(aes(label=irsnps_for_MR_names),vjust=-0.4) +
+  geom_errorbarh(aes(xmin = xmin,xmax = xmax)) +
+  geom_vline(xintercept=0) +
+  geom_vline(xintercept=IVW_beta[which(colnames(IR_Beta) =="L_Tyrosine")],col="red") +
+  geom_vline(xintercept=loglik_beta[which(colnames(IR_Beta) =="L_Tyrosine")],col="blue") +
+  ggtitle("Insulin resistance - Tyrosine - Instrument strength against IV estimate") +
+  labs(y="IV strength",x="IV estimate") +
+  ylim(0,3.5) + xlim(-2.5,2.5)
+
+## MAG(18:1) ##
+df <- data.frame(x = ir_magic_snps$effect/0.2280594, y = IR_Beta$MAG_18_1,
+                 ymin = IR_Beta$MAG_18_1 - (1.96*IR_SE$MAG_18_1),ymax = IR_Beta$MAG_18_1 + (1.96*IR_SE$MAG_18_1),
+                 xmin = ir_magic_snps$effect/0.2280594 - (1.96*(ir_magic_snps$stderr/0.2280594)),
+                 xmax = ir_magic_snps$effect/0.2280594 + (1.96*(ir_magic_snps$stderr/0.2280594)))
+
+ggplot(data = df,aes(x = x,y = y)) + geom_point() + 
+  # geom_text(aes(label=irsnps_for_MR_names),cex=4,col="darkblue") +
+  geom_errorbar(aes(ymin = ymin,ymax = ymax)) + 
+  geom_errorbarh(aes(xmin = xmin,xmax = xmax)) +
+  # geom_smooth(method='lm',formula=y~x,se=F,col="black",fullrange=T, linetype="dotted") +
+  geom_hline(aes(yintercept=0)) +
+  geom_vline(aes(xintercept=0)) +
+  ggtitle("Insulin resistance - MAG(18:1) - PIVUS & TwinGene (n=2,613)") + 
+  theme(axis.text=element_text(size=12),axis.title=element_text(size=16)) +
+  labs(x="Genetic association with IR (log-HOMA-IR in SD-units, MAGIC, n=46,186)",
+       y="Genetic association with plasma metabolite (SD-units)") +
+  geom_abline(slope = IVW_beta[which(colnames(IR_Beta) =="MAG_18_1")], intercept = 0, col="red") +
+  geom_abline(slope = loglik_beta[which(colnames(IR_Beta) =="MAG_18_1")], intercept = 0, col="blue") +
+  xlim(-0.04,0.14) +
+  geom_abline(slope = MREgger_SWE[which(MREgger_SWE$Metabolite=="MAG_18_1")[2],1], 
+              intercept = MREgger_SWE[which(MREgger_SWE$Metabolite=="MAG_18_1")[1],1], linetype="dotted") 
+
+seiv <- abs(df$y/df$x) * sqrt(((IR_SE$MAG_18_1/IR_Beta$MAG_18_1)^2) + ((ir_magic_snps$stderr/df$x)^2))
+dfunnel <- data.frame(y = df$x/IR_SE$MAG_18_1,x = df$y/df$x,xmin = df$y/df$x - (1.96*seiv),xmax = df$y/df$x + (1.96*seiv))
+
+ggplot(data = dfunnel,aes(x = x,y = y)) + 
+  geom_point(size=2) + 
+  geom_text(aes(label=irsnps_for_MR_names),vjust=-0.4) +
+  geom_errorbarh(aes(xmin = xmin,xmax = xmax)) +
+  geom_vline(xintercept=0) +
+  geom_vline(xintercept=IVW_beta[which(colnames(IR_Beta) =="MAG_18_1")],col="red") +
+  geom_vline(xintercept=loglik_beta[which(colnames(IR_Beta) =="MAG_18_1")],col="blue") +
+  ggtitle("Insulin resistance - MAG(18:1) - Instrument strength against IV estimate") +
+  labs(y="IV strength",x="IV estimate") +
+  ylim(0,3.5) + xlim(-3.5,3.5)
+
+## MAG(18:2) ##
+df <- data.frame(x = ir_magic_snps$effect/0.2280594, y = IR_Beta$MAG_18_2,
+                 ymin = IR_Beta$MAG_18_2 - (1.96*IR_SE$MAG_18_2),ymax = IR_Beta$MAG_18_2 + (1.96*IR_SE$MAG_18_2),
+                 xmin = ir_magic_snps$effect/0.2280594 - (1.96*(ir_magic_snps$stderr/0.2280594)),
+                 xmax = ir_magic_snps$effect/0.2280594 + (1.96*(ir_magic_snps$stderr/0.2280594)))
+
+ggplot(data = df,aes(x = x,y = y)) + geom_point() + 
+  # geom_text(aes(label=irsnps_for_MR_names),cex=4,col="darkblue") +
+  geom_errorbar(aes(ymin = ymin,ymax = ymax)) + 
+  geom_errorbarh(aes(xmin = xmin,xmax = xmax)) +
+  # geom_smooth(method='lm',formula=y~x,se=F,col="black",fullrange=T, linetype="dotted") +
+  geom_hline(aes(yintercept=0)) +
+  geom_vline(aes(xintercept=0)) +
+  ggtitle("Insulin resistance - MAG(18:2) - PIVUS & TwinGene (n=2,613)") + 
+  theme(axis.text=element_text(size=12),axis.title=element_text(size=16)) +
+  labs(x="Genetic association with IR (log-HOMA-IR in SD-units, MAGIC, n=46,186)",
+       y="Genetic association with plasma metabolite (SD-units)") +
+  geom_abline(slope = IVW_beta[which(colnames(IR_Beta) =="MAG_18_2")], intercept = 0, col="red") +
+  geom_abline(slope = loglik_beta[which(colnames(IR_Beta) =="MAG_18_2")], intercept = 0, col="blue") +
+  xlim(-0.04,0.14) +
+  geom_abline(slope = MREgger_SWE[which(MREgger_SWE$Metabolite=="MAG_18_2")[2],1], 
+              intercept = MREgger_SWE[which(MREgger_SWE$Metabolite=="MAG_18_2")[1],1], linetype="dotted") 
+
+seiv <- abs(df$y/df$x) * sqrt(((IR_SE$MAG_18_2/IR_Beta$MAG_18_2)^2) + ((ir_magic_snps$stderr/df$x)^2))
+dfunnel <- data.frame(y = df$x/IR_SE$MAG_18_2,x = df$y/df$x,xmin = df$y/df$x - (1.96*seiv),xmax = df$y/df$x + (1.96*seiv))
+
+ggplot(data = dfunnel,aes(x = x,y = y)) + 
+  geom_point(size=2) + 
+  geom_text(aes(label=irsnps_for_MR_names),vjust=-0.4) +
+  geom_errorbarh(aes(xmin = xmin,xmax = xmax)) +
+  geom_vline(xintercept=0) +
+  geom_vline(xintercept=IVW_beta[which(colnames(IR_Beta) =="MAG_18_2")],col="red") +
+  geom_vline(xintercept=loglik_beta[which(colnames(IR_Beta) =="MAG_18_2")],col="blue") +
+  ggtitle("Insulin resistance - MAG(18:2) - Instrument strength against IV estimate") +
+  labs(y="IV strength",x="IV estimate") +
+  ylim(0,3.5) + xlim(-2.5,2.5)
+
+## MAG(14:0) ##
+df <- data.frame(x = ir_magic_snps$effect/0.2280594, y = IR_Beta$MAG_14_0,
+                 ymin = IR_Beta$MAG_14_0 - (1.96*IR_SE$MAG_14_0),ymax = IR_Beta$MAG_14_0 + (1.96*IR_SE$MAG_14_0),
+                 xmin = ir_magic_snps$effect/0.2280594 - (1.96*(ir_magic_snps$stderr/0.2280594)),
+                 xmax = ir_magic_snps$effect/0.2280594 + (1.96*(ir_magic_snps$stderr/0.2280594)))
+
+ggplot(data = df,aes(x = x,y = y)) + geom_point() + 
+  # geom_text(aes(label=irsnps_for_MR_names),cex=4,col="darkblue") +
+  geom_errorbar(aes(ymin = ymin,ymax = ymax)) + 
+  geom_errorbarh(aes(xmin = xmin,xmax = xmax)) +
+  # geom_smooth(method='lm',formula=y~x,se=F,col="black",fullrange=T, linetype="dotted") +
+  geom_hline(aes(yintercept=0)) +
+  geom_vline(aes(xintercept=0)) +
+  ggtitle("Insulin resistance - MAG(14:0) - PIVUS & TwinGene (n=2,613)") + 
+  theme(axis.text=element_text(size=12),axis.title=element_text(size=16)) +
+  labs(x="Genetic association with IR (log-HOMA-IR in SD-units, MAGIC, n=46,186)",
+       y="Genetic association with plasma metabolite (SD-units)") +
+  geom_abline(slope = IVW_beta[which(colnames(IR_Beta) =="MAG_14_0")], intercept = 0, col="red") +
+  geom_abline(slope = loglik_beta[which(colnames(IR_Beta) =="MAG_14_0")], intercept = 0, col="blue") +
+  xlim(-0.04,0.14) +
+  geom_abline(slope = MREgger_SWE[which(MREgger_SWE$Metabolite=="MAG_14_0")[2],1], 
+              intercept = MREgger_SWE[which(MREgger_SWE$Metabolite=="MAG_14_0")[1],1], linetype="dotted") 
+
+seiv <- abs(df$y/df$x) * sqrt(((IR_SE$MAG_14_0/IR_Beta$MAG_14_0)^2) + ((ir_magic_snps$stderr/df$x)^2))
+dfunnel <- data.frame(y = df$x/IR_SE$MAG_14_0,x = df$y/df$x,xmin = df$y/df$x - (1.96*seiv),xmax = df$y/df$x + (1.96*seiv))
+
+ggplot(data = dfunnel,aes(x = x,y = y)) + 
+  geom_point(size=2) + 
+  geom_text(aes(label=irsnps_for_MR_names),vjust=-0.4) +
+  geom_errorbarh(aes(xmin = xmin,xmax = xmax)) +
+  geom_vline(xintercept=0) +
+  geom_vline(xintercept=IVW_beta[which(colnames(IR_Beta) =="MAG_14_0")],col="red") +
+  geom_vline(xintercept=loglik_beta[which(colnames(IR_Beta) =="MAG_14_0")],col="blue") +
+  ggtitle("Insulin resistance - MAG(14:0) - Instrument strength against IV estimate") +
+  labs(y="IV strength",x="IV estimate") +
+  ylim(0,3.5) + xlim(-3,3)
+
+## Trihydroxy... ##
+df <- data.frame(x = ir_magic_snps$effect/0.2280594, y = IR_Beta$Trihydroxy_5b_cholanoic_acid,
+                 ymin = IR_Beta$Trihydroxy_5b_cholanoic_acid - (1.96*IR_SE$Trihydroxy_5b_cholanoic_acid),ymax = IR_Beta$Trihydroxy_5b_cholanoic_acid + (1.96*IR_SE$Trihydroxy_5b_cholanoic_acid),
+                 xmin = ir_magic_snps$effect/0.2280594 - (1.96*(ir_magic_snps$stderr/0.2280594)),
+                 xmax = ir_magic_snps$effect/0.2280594 + (1.96*(ir_magic_snps$stderr/0.2280594)))
+
+ggplot(data = df,aes(x = x,y = y)) + geom_point() + 
+  # geom_text(aes(label=irsnps_for_MR_names),cex=4,col="darkblue") +
+  geom_errorbar(aes(ymin = ymin,ymax = ymax)) + 
+  geom_errorbarh(aes(xmin = xmin,xmax = xmax)) +
+  # geom_smooth(method='lm',formula=y~x,se=F,col="black",fullrange=T, linetype="dotted") +
+  geom_hline(aes(yintercept=0)) +
+  geom_vline(aes(xintercept=0)) +
+  ggtitle("Insulin resistance - Trihydroxy-5b-cholanoic acid - PIVUS & TwinGene (n=2,613)") + 
+  theme(axis.text=element_text(size=12),axis.title=element_text(size=16)) +
+  labs(x="Genetic association with IR (log-HOMA-IR in SD-units, MAGIC, n=46,186)",
+       y="Genetic association with plasma metabolite (SD-units)") +
+  geom_abline(slope = IVW_beta[which(colnames(IR_Beta) =="Trihydroxy_5b_cholanoic_acid")], intercept = 0, col="red") +
+  geom_abline(slope = loglik_beta[which(colnames(IR_Beta) =="Trihydroxy_5b_cholanoic_acid")], intercept = 0, col="blue") +
+  xlim(-0.04,0.14) +
+  geom_abline(slope = MREgger_SWE[which(MREgger_SWE$Metabolite=="Trihydroxy_5b_cholanoic_acid")[2],1], 
+              intercept = MREgger_SWE[which(MREgger_SWE$Metabolite=="Trihydroxy_5b_cholanoic_acid")[1],1], linetype="dotted") 
+
+seiv <- abs(df$y/df$x) * sqrt(((IR_SE$Trihydroxy_5b_cholanoic_acid/IR_Beta$Trihydroxy_5b_cholanoic_acid)^2) + ((ir_magic_snps$stderr/df$x)^2))
+dfunnel <- data.frame(y = df$x/IR_SE$Trihydroxy_5b_cholanoic_acid,x = df$y/df$x,xmin = df$y/df$x - (1.96*seiv), xmax = df$y/df$x + (1.96*seiv))
+
+ggplot(data = dfunnel,aes(x = x,y = y)) + 
+  geom_point(size=2) + 
+  geom_text(aes(label=irsnps_for_MR_names),vjust=-0.4) +
+  geom_errorbarh(aes(xmin = xmin,xmax = xmax)) +
+  geom_vline(xintercept=0) +
+  geom_vline(xintercept=IVW_beta[which(colnames(IR_Beta) =="Trihydroxy_5b_cholanoic_acid")],col="red") +
+  geom_vline(xintercept=loglik_beta[which(colnames(IR_Beta) =="Trihydroxy_5b_cholanoic_acid")],col="blue") +
+  ggtitle("Insulin resistance - Trihydroxy-5b-cholanoic acid - Instrument strength against IV estimate") +
+  labs(y="IV strength",x="IV estimate") +
+  ylim(0,3.5) + xlim(-3,3)
+
+## Gamma-tocopherol ##
+df <- data.frame(x = ir_magic_snps$effect/0.2280594, y = IR_Beta$gamma_Tocopherol,
+                 ymin = IR_Beta$gamma_Tocopherol - (1.96*IR_SE$gamma_Tocopherol),ymax = IR_Beta$gamma_Tocopherol + (1.96*IR_SE$gamma_Tocopherol),
+                 xmin = ir_magic_snps$effect/0.2280594 - (1.96*(ir_magic_snps$stderr/0.2280594)),
+                 xmax = ir_magic_snps$effect/0.2280594 + (1.96*(ir_magic_snps$stderr/0.2280594)))
+
+ggplot(data = df,aes(x = x,y = y)) + geom_point() + 
+  # geom_text(aes(label=irsnps_for_MR_names),cex=4,col="darkblue") +
+  geom_errorbar(aes(ymin = ymin,ymax = ymax)) + 
+  geom_errorbarh(aes(xmin = xmin,xmax = xmax)) +
+  # geom_smooth(method='lm',formula=y~x,se=F,col="black",fullrange=T, linetype="dotted") +
+  geom_hline(aes(yintercept=0)) +
+  geom_vline(aes(xintercept=0)) +
+  ggtitle("Insulin resistance - gamma-Tocopherol - PIVUS & TwinGene (n=2,613)") + 
+  theme(axis.text=element_text(size=12),axis.title=element_text(size=16)) +
+  labs(x="Genetic association with IR (log-HOMA-IR in SD-units, MAGIC, n=46,186)",
+       y="Genetic association with plasma metabolite (SD-units)") +
+  geom_abline(slope = IVW_beta[which(colnames(IR_Beta) =="gamma_Tocopherol")], intercept = 0, col="red") +
+  geom_abline(slope = loglik_beta[which(colnames(IR_Beta) =="gamma_Tocopherol")], intercept = 0, col="blue") +
+  xlim(-0.04,0.14) +
+  geom_abline(slope = MREgger_SWE[which(MREgger_SWE$Metabolite=="gamma_Tocopherol")[2],1], 
+              intercept = MREgger_SWE[which(MREgger_SWE$Metabolite=="gamma_Tocopherol")[1],1], linetype="dotted") 
+
+seiv <- abs(df$y/df$x) * sqrt(((IR_SE$gamma_Tocopherol/IR_Beta$gamma_Tocopherol)^2) + ((ir_magic_snps$stderr/df$x)^2))
+dfunnel <- data.frame(y = df$x/IR_SE$gamma_Tocopherol,x = df$y/df$x,xmin = df$y/df$x - (1.96*seiv),xmax = df$y/df$x + (1.96*seiv))
+
+ggplot(data = dfunnel,aes(x = x,y = y)) + 
+  geom_point(size=2) + 
+  geom_text(aes(label=irsnps_for_MR_names),vjust=-0.4) +
+  geom_errorbarh(aes(xmin = xmin,xmax = xmax)) +
+  geom_vline(xintercept=0) +
+  geom_vline(xintercept=IVW_beta[which(colnames(IR_Beta) =="gamma_Tocopherol")],col="red") +
+  geom_vline(xintercept=loglik_beta[which(colnames(IR_Beta) =="gamma_Tocopherol")],col="blue") +
+  ggtitle("Insulin resistance - gamma-Tocopherol - Instrument strength against IV estimate") +
+  labs(y="IV strength",x="IV estimate") +
+  ylim(0,3.5) + xlim(-2.5,2.5)
+
+##### ##### KORA / TwinsUK ##### #####
+
+oleate_kora_2 <- read.table("oleate_kora_2.txt")
+tyrosine_kora_2 <- read.table("tyrosine_kora_2.txt")
+hippuric_kora_2 <- read.table("hippuric_kora_2.txt")
+palmit_kora_2 <- read.table("palmit_kora_2.txt")
+mag182_kora_2 <- read.table("mag182_kora_2.txt")
+mag181_kora_2 <- read.table("mag181_kora_2.txt")
+gtoco_kora_2 <- read.table("gtoco_kora_2.txt")
+  
+  ## in SD units (see main script)
+k_palmit_sd <- sqrt(((0.208^2)*6010 + (0.208^2)*1766)/(6010+1766))
+k_oleate_sd <- sqrt(((0.140^2)*6003 + (0.111^2)*1765)/(6003+1765))
+k_hippuric_sd <- sqrt(((0.280^2)*6048 + (0.294^2)*1758)/(6048+1758))
+k_tyrosine_sd <- sqrt(((0.093^2)*6046 + (0.077^2)*1761)/(6046+1761))
+k_mag182_sd <- sqrt(((0.246^2)*1039 + (0.221^2)*1758)/(1039+1758))
+k_mag181_sd <- sqrt(((0.262^2)*4027 + (0.250^2)*1690)/(4027+1690))
+k_gtoco_sd <- sqrt(((0.244^2)*6226 + (0.218^2)*977)/(6226+977))
+
+oleate_kora_2$Effect2 <- oleate_kora_2$Effect2 / k_oleate_sd
+tyrosine_kora_2$Effect2 <- tyrosine_kora_2$Effect2 /k_tyrosine_sd
+hippuric_kora_2$Effect2 <- hippuric_kora_2$Effect2 /k_hippuric_sd
+palmit_kora_2$Effect2 <- palmit_kora_2$Effect2 /k_palmit_sd
+mag182_kora_2$Effect2 <- mag182_kora_2$Effect2 /k_mag182_sd
+mag181_kora_2$Effect2 <- mag181_kora_2$Effect2 /k_mag181_sd
+gtoco_kora_2$Effect2 <- gtoco_kora_2$Effect2 /k_gtoco_sd
+
+oleate_kora_2$StdErr <- oleate_kora_2$StdErr / k_oleate_sd
+tyrosine_kora_2$StdErr <- tyrosine_kora_2$StdErr /k_tyrosine_sd
+hippuric_kora_2$StdErr <- hippuric_kora_2$StdErr /k_hippuric_sd
+palmit_kora_2$StdErr <- palmit_kora_2$StdErr /k_palmit_sd
+mag182_kora_2$StdErr <- mag182_kora_2$StdErr /k_mag182_sd
+mag181_kora_2$StdErr <- mag181_kora_2$StdErr /k_mag181_sd
+gtoco_kora_2$StdErr <- gtoco_kora_2$StdErr /k_gtoco_sd
+
+kora_b <- cbind(oleate_kora_2$Effect2,palmit_kora_2$Effect2,hippuric_kora_2$Effect2,tyrosine_kora_2$Effect2,
+                mag181_kora_2$Effect2,mag182_kora_2$Effect2,gtoco_kora_2$Effect2)
+kora_se <- cbind(oleate_kora_2$StdErr,palmit_kora_2$StdErr,hippuric_kora_2$StdErr,tyrosine_kora_2$StdErr,
+                 mag181_kora_2$StdErr,mag182_kora_2$StdErr,gtoco_kora_2$StdErr)
+
+  ## IVW, loglik, MR Egger
+x = ir_magic_snps$effect/0.2280594 
+sigmax = ir_magic_snps$stderr/0.2280594
+y = kora_b
+sigmay = kora_se
+
+IVW_beta <- NULL; IVW_se <- NULL
+for(i in 1:ncol(kora_b)){
+  IVW_beta <- c(IVW_beta,sum(x*y[,i]/sigmay[,i]^2)/sum(x^2/sigmay[,i]^2))
+  IVW_se <- c(IVW_se,sqrt(1/sum(x^2/sigmay[,i]^2)))
+}
+
+loglik_beta <- NULL;loglik_se <- NULL;hetero_pval <- NULL
+for(i in 1:ncol(kora_b)){
+  loglikelihood <- function(param) {             
+    return(1/2*sum((x-param[1:length(x)])^2/sigmax^2)+1/2*
+             sum((y[,i]-param[length(x)+1]*param[1:length(x)])^2/sigmay[,i]^2)) }
+  opt = optim(c(x, sum(x*y[,i]/sigmay[,i]^2)/sum(x^2/sigmay[,i]^2)),loglikelihood, hessian=TRUE, control = list(maxit=25000))
+  loglik_beta <- c(loglik_beta,opt$par[length(x)+1])
+  loglik_se <- c(loglik_se,sqrt(solve(opt$hessian)[length(x)+1,length(x)+1]))
+  hetero_pval <- c(hetero_pval,round(pchisq(2*opt$value, df=length(x)-1, lower.tail=FALSE),3))
+}
+
+KORA_tab1 <- data.frame(c("Oleate","Palmitoleate","Hippurate","Tyrosine",
+                          "MAG(18_1)","MAG(18_2)","Gamma_tocpherol"), IVW_beta, IVW_se, loglik_beta, loglik_se, hetero_pval)
+colnames(KORA_tab1) <- c("Metabolite","IVW_est","IVW_se","LogLikelihood_est","LogLikelihood_se","Heterogeneity_pval")
+
+  ## MR Egger regression
+BetaXG = ir_magic_snps$effect/0.2280594 
+seBetaXG = ir_magic_snps$stderr/0.2280594
+BetaYG =  kora_b
+seBetaYG = kora_se 
+MREgger_kora <- list()
+for (i in 1:ncol(kora_b)){
+  BYG             = BetaYG[,i]*sign(BetaXG)   
+  BXG             = abs(BetaXG)         
+  MREggerFit      = summary(lm(BYG ~  BXG,weights=1/seBetaYG[,i]^2))
+  MREggerBeta1    = MREggerFit$coef[1,1]
+  SE1             = MREggerFit$coef[1,2]/min(1,MREggerFit$sigma)
+  DF              = length(BetaYG[,i])-2
+  MRBeta1_p       = 2*(1-pt(abs(MREggerBeta1/SE1),DF))
+  MRBeta1_CI      = MREggerBeta1 + c(-1,1)*qt(df=DF, 0.975)*SE1
+  MREggerBeta0   = MREggerFit$coef[1,1]
+  MREggerBeta1   = MREggerFit$coef[2,1]
+  SE0            = MREggerFit$coef[1,2]/min(1,MREggerFit$sigma)
+  SE1            = MREggerFit$coef[2,2]/min(1,MREggerFit$sigma)
+  DF             = length(BetaYG[,i])-2
+  MRBeta0_p      = 2*(1-pt(abs(MREggerBeta0/SE0),DF))
+  MRBeta1_p      = 2*(1-pt(abs(MREggerBeta1/SE1),DF))
+  MRBeta0_CI     = MREggerBeta0 + c(-1,1)*qt(df=DF, 0.975)*SE0
+  MRBeta1_CI     = MREggerBeta1 + c(-1,1)*qt(df=DF, 0.975)*SE1  
+  MREggerResults      = matrix(nrow = 2,ncol = 5)
+  MREggerResults[1,] = c(MREggerBeta0,SE0,MRBeta0_CI,MRBeta0_p)
+  MREggerResults[2,] = c(MREggerBeta1,SE1,MRBeta1_CI,MRBeta1_p)
+  colnames(MREggerResults) <-c("est","se","lci","uci","pval")
+  MREgger_kora[[i]] <- MREggerResults
+}
+
+MREgger_KORA <- data.frame(do.call(rbind.data.frame, MREgger_kora))
+MREgger_KORA$Metabolite <- c(rep("Oleic acid",2),rep("Palmitoleic acid",2),rep("Hippuric acid",2),
+                             rep("Tyrosine",2),rep("MAG(18:1)",2),rep("MAG(18:2)",2),rep("Gamma Tocopherol",2))
+
+# write.table(MREgger_KORA,"MREGGER_KORA.txt")
+
+## KORA Oleic acid ##
+df <- data.frame(x = ir_magic_snps$effect/0.2280594, y = kora_b[,1],
+                 ymin = kora_b[,1] - (1.96*kora_se[,1]),ymax = kora_b[,1] + (1.96*kora_se[,1]),
+                 xmin = ir_magic_snps$effect/0.2280594 - (1.96*(ir_magic_snps$stderr/0.2280594)),
+                 xmax = ir_magic_snps$effect/0.2280594 + (1.96*(ir_magic_snps$stderr/0.2280594)))
+
+ggplot(data = df,aes(x = x,y = y)) + geom_point() + 
+  # geom_text(aes(label=oleate_kora_2$MarkerName),cex=4,col="darkblue") +
+  geom_errorbar(aes(ymin = ymin,ymax = ymax)) + 
+  geom_errorbarh(aes(xmin = xmin,xmax = xmax)) +
+  # geom_smooth(method='lm',formula=y~x,se=F,col="black",fullrange=T, linetype="dotted") +
+  geom_hline(aes(yintercept=0)) +
+  geom_vline(aes(xintercept=0)) +
+  ggtitle("Insulin resistance - Oleic acid - KORA/TwinsUK (n=7,768)") + 
+  theme(axis.text=element_text(size=12),axis.title=element_text(size=16)) +
+  labs(x="Genetic association with IR (log-HOMA-IR in SD-units, MAGIC, n=46,186)",
+       y="Genetic association with plasma metabolite (SD-units)") +
+  geom_abline(slope = IVW_beta[1], intercept = 0, col="red") +
+  geom_abline(slope = loglik_beta[1], intercept = 0, col="blue") +
+  xlim(-0.04,0.14) +
+  geom_abline(slope = MREgger_KORA[which(MREgger_KORA$Metabolite=="Oleic acid")[2],1], 
+              intercept = MREgger_KORA[which(MREgger_KORA$Metabolite=="Oleic acid")[1],1], linetype="dotted") 
+
+seiv <- abs(df$y/df$x) * sqrt(((kora_se[,1]/kora_b[,1])^2) + ((ir_magic_snps$stderr/df$x)^2))
+dfunnel <- data.frame(y = df$x/kora_se[,1],x = df$y/df$x,xmin = df$y/df$x - (1.96*seiv), xmax = df$y/df$x + (1.96*seiv))
+
+ggplot(data = dfunnel,aes(x = x,y = y)) + 
+  geom_point(size=2) + 
+  geom_text(aes(label=irsnps_for_MR_names),vjust=-0.4) +
+  geom_errorbarh(aes(xmin = xmin,xmax = xmax)) +
+  geom_vline(xintercept=0) +
+  geom_vline(xintercept=IVW_beta[1],col="red") +
+  geom_vline(xintercept=loglik_beta[1],col="blue") +
+  ggtitle("Insulin resistance - Oleic acid - KORA/TwinsUK - Instrument strength against IV estimate") +
+  labs(y="IV strength",x="IV estimate") +
+  ylim(0,5) + xlim(-2,2)
+
+## KORA Palmitoleic acid ##
+df <- data.frame(x = ir_magic_snps$effect/0.2280594, y = kora_b[,2],
+                 ymin = kora_b[,2] - (1.96*kora_se[,2]),ymax = kora_b[,2] + (1.96*kora_se[,2]),
+                 xmin = ir_magic_snps$effect/0.2280594 - (1.96*(ir_magic_snps$stderr/0.2280594)),
+                 xmax = ir_magic_snps$effect/0.2280594 + (1.96*(ir_magic_snps$stderr/0.2280594)))
+
+ggplot(data = df,aes(x = x,y = y)) + geom_point() + 
+  # geom_text(aes(label=oleate_kora_2$MarkerName),cex=4,col="darkblue") +
+  geom_errorbar(aes(ymin = ymin,ymax = ymax)) + 
+  geom_errorbarh(aes(xmin = xmin,xmax = xmax)) +
+  # geom_smooth(method='lm',formula=y~x,se=F,col="black",fullrange=T, linetype="dotted") +
+  geom_hline(aes(yintercept=0)) +
+  geom_vline(aes(xintercept=0)) +
+  ggtitle("Insulin resistance - Palmitoleic acid - KORA/TwinsUK (n=7,776)") + 
+  theme(axis.text=element_text(size=12),axis.title=element_text(size=16)) +
+  labs(x="Genetic association with IR (log-HOMA-IR in SD-units, MAGIC, n=46,186)",
+       y="Genetic association with plasma metabolite (SD-units)") +
+  geom_abline(slope = IVW_beta[2, intercept = 0, col="red") +
+  geom_abline(slope = loglik_beta[2, intercept = 0, col="blue") +
+  xlim(-0.04,0.14) +
+  geom_abline(slope = MREgger_KORA[which(MREgger_KORA$Metabolite=="Palmitoleic acid")[2],1], 
+              intercept = MREgger_KORA[which(MREgger_KORA$Metabolite=="Palmitoleic acid")[1],1], linetype="dotted") 
+
+seiv <- abs(df$y/df$x) * sqrt(((kora_se[,2]/kora_b[,2])^2) + ((ir_magic_snps$stderr/df$x)^2))
+dfunnel <- data.frame(y = df$x/kora_se[,2],x = df$y/df$x,xmin = df$y/df$x - (1.96*seiv),xmax = df$y/df$x + (1.96*seiv))
+
+ggplot(data = dfunnel,aes(x = x,y = y)) + 
+  geom_point(size=2) + 
+  geom_text(aes(label=irsnps_for_MR_names),vjust=-0.4) +
+  geom_errorbarh(aes(xmin = xmin,xmax = xmax)) +
+  geom_vline(xintercept=0) +
+  geom_vline(xintercept=IVW_beta[2,col="red") +
+  geom_vline(xintercept=loglik_beta[2,col="blue") +
+  ggtitle("Insulin resistance - Palmitoleic acid - KORA/TwinsUK - Instrument strength against IV estimate") +
+  labs(y="IV strength",x="IV estimate") +
+  ylim(0,5) + xlim(-2,2)
+
+## KORA Hippuric acid ##
+df <- data.frame(x = ir_magic_snps$effect/0.2280594, y = kora_b[,3],
+                 ymin = kora_b[,3] - (1.96*kora_se[,3]),ymax = kora_b[,3] + (1.96*kora_se[,3]),
+                 xmin = ir_magic_snps$effect/0.2280594 - (1.96*(ir_magic_snps$stderr/0.2280594)),
+                 xmax = ir_magic_snps$effect/0.2280594 + (1.96*(ir_magic_snps$stderr/0.2280594)))
+
+ggplot(data = df,aes(x = x,y = y)) + geom_point() + 
+  # geom_text(aes(label=oleate_kora_2$MarkerName),cex=4,col="darkblue") +
+  geom_errorbar(aes(ymin = ymin,ymax = ymax)) + 
+  geom_errorbarh(aes(xmin = xmin,xmax = xmax)) +
+  # geom_smooth(method='lm',formula=y~x,se=F,col="black",fullrange=T, linetype="dotted") +
+  geom_hline(aes(yintercept=0)) +
+  geom_vline(aes(xintercept=0)) +
+  ggtitle("Insulin resistance - Hippuric acid - KORA/TwinsUK (n=7,806)") + 
+  theme(axis.text=element_text(size=12),axis.title=element_text(size=16)) +
+  labs(x="Genetic association with IR (log-HOMA-IR in SD-units, MAGIC, n=46,186)",
+       y="Genetic association with plasma metabolite (SD-units)") +
+  geom_abline(slope = IVW_beta[3], intercept = 0, col="red") +
+  geom_abline(slope = loglik_beta[3], intercept = 0, col="blue") +
+  xlim(-0.04,0.14) +
+  geom_abline(slope = MREgger_KORA[which(MREgger_KORA$Metabolite=="Hippuric acid")[2],1], 
+              intercept = MREgger_KORA[which(MREgger_KORA$Metabolite=="Hippuric acid")[1],1], linetype="dotted") 
+
+seiv <- abs(df$y/df$x) * sqrt(((kora_se[,3]/kora_b[,3])^2) + ((ir_magic_snps$stderr/df$x)^2))
+dfunnel <- data.frame(y = df$x/kora_se[,3],x = df$y/df$x,xmin = df$y/df$x - (1.96*seiv),xmax = df$y/df$x + (1.96*seiv))
+
+ggplot(data = dfunnel,aes(x = x,y = y)) + 
+  geom_point(size=2) + 
+  geom_text(aes(label=irsnps_for_MR_names),vjust=-0.4) +
+  geom_errorbarh(aes(xmin = xmin,xmax = xmax)) +
+  geom_vline(xintercept=0) +
+  geom_vline(xintercept=IVW_beta[3],col="red") +
+  geom_vline(xintercept=loglik_beta[3],col="blue") +
+  ggtitle("Insulin resistance - Hippuric acid - KORA/TwinsUK - Instrument strength against IV estimate") +
+  labs(y="IV strength",x="IV estimate") +
+  ylim(0,5) + xlim(-2,2)
+
+## KORA Tyrosine ##
+df <- data.frame(x = ir_magic_snps$effect/0.2280594, y = kora_b[,4],
+                 ymin = kora_b[,4] - (1.96*kora_se[,4]),ymax = kora_b[,4] + (1.96*kora_se[,4]),
+                 xmin = ir_magic_snps$effect/0.2280594 - (1.96*(ir_magic_snps$stderr/0.2280594)),
+                 xmax = ir_magic_snps$effect/0.2280594 + (1.96*(ir_magic_snps$stderr/0.2280594)))
+
+ggplot(data = df,aes(x = x,y = y)) + geom_point() + 
+  # geom_text(aes(label=oleate_kora_2$MarkerName),cex=4,col="darkblue") +
+  geom_errorbar(aes(ymin = ymin,ymax = ymax)) + 
+  geom_errorbarh(aes(xmin = xmin,xmax = xmax)) +
+  # geom_smooth(method='lm',formula=y~x,se=F,col="black",fullrange=T, linetype="dotted") +
+  geom_hline(aes(yintercept=0)) +
+  geom_vline(aes(xintercept=0)) +
+  ggtitle("Insulin resistance - Tyrosine - KORA/TwinsUK (n=7,807)") + 
+  theme(axis.text=element_text(size=12),axis.title=element_text(size=16)) +
+  labs(x="Genetic association with IR (log-HOMA-IR in SD-units, MAGIC, n=46,186)",
+       y="Genetic association with plasma metabolite (SD-units)") +
+  geom_abline(slope = IVW_beta[4], intercept = 0, col="red") +
+  geom_abline(slope = loglik_beta[4], intercept = 0, col="blue") +
+  xlim(-0.04,0.14) +
+  geom_abline(slope = MREgger_KORA[which(MREgger_KORA$Metabolite=="Tyrosine")[2],1], 
+              intercept = MREgger_KORA[which(MREgger_KORA$Metabolite=="Tyrosine")[1],1], linetype="dotted") 
+
+seiv <- abs(df$y/df$x) * sqrt(((kora_se[,4]/kora_b[,4])^2) + ((ir_magic_snps$stderr/df$x)^2))
+dfunnel <- data.frame(y = df$x/kora_se[,4],x = df$y/df$x,xmin = df$y/df$x - (1.96*seiv), xmax = df$y/df$x + (1.96*seiv))
+
+ggplot(data = dfunnel,aes(x = x,y = y)) + 
+  geom_point(size=2) + 
+  geom_text(aes(label=irsnps_for_MR_names),vjust=-0.4) +
+  geom_errorbarh(aes(xmin = xmin,xmax = xmax)) +
+  geom_vline(xintercept=0) +
+  geom_vline(xintercept=IVW_beta[4],col="red") +
+  geom_vline(xintercept=loglik_beta[4],col="blue") +
+  ggtitle("Insulin resistance - Tyrosine - KORA/TwinsUK - Instrument strength against IV estimate") +
+  labs(y="IV strength",x="IV estimate") +
+  ylim(0,5) + xlim(-2,2)
+
+## KORA MAG 18:1 ##
+df <- data.frame(x = ir_magic_snps$effect/0.2280594, y = kora_b[,5],
+                 ymin = kora_b[,5] - (1.96*kora_se[,5]),ymax = kora_b[,5] + (1.96*kora_se[,5]),
+                 xmin = ir_magic_snps$effect/0.2280594 - (1.96*(ir_magic_snps$stderr/0.2280594)),
+                 xmax = ir_magic_snps$effect/0.2280594 + (1.96*(ir_magic_snps$stderr/0.2280594)))
+
+ggplot(data = df,aes(x = x,y = y)) + geom_point() + 
+  #geom_text(aes(label=oleate_kora_2$MarkerName),cex=4,col="darkblue") +
+  geom_errorbar(aes(ymin = ymin,ymax = ymax)) + 
+  geom_errorbarh(aes(xmin = xmin,xmax = xmax)) +
+  #geom_smooth(method='lm',formula=y~x,se=F,col="black",fullrange=T, linetype="dotted") +
+  geom_hline(aes(yintercept=0)) +
+  geom_vline(aes(xintercept=0)) +
+  ggtitle("Insulin resistance - MAG(18:1) - KORA/TwinsUK (n=5,717)") + 
+  theme(axis.text=element_text(size=12),axis.title=element_text(size=16)) +
+  labs(x="Genetic association with IR (log-HOMA-IR in SD-units, MAGIC, n=46,186)",
+       y="Genetic association with plasma metabolite (SD-units)") +
+  geom_abline(slope = IVW_beta[5], intercept = 0, col="red") +
+  geom_abline(slope = loglik_beta[5], intercept = 0, col="blue") +
+  xlim(-0.04,0.14) +
+  geom_abline(slope = MREgger_KORA[which(MREgger_KORA$Metabolite=="MAG(18:1)")[2],1], 
+              intercept = MREgger_KORA[which(MREgger_KORA$Metabolite=="MAG(18:1)")[1],1], linetype="dotted") 
+
+seiv <- abs(df$y/df$x) * sqrt(((kora_se[,5]/kora_b[,5])^2) + ((ir_magic_snps$stderr/df$x)^2))
+dfunnel <- data.frame(y = df$x/kora_se[,5],x = df$y/df$x,xmin = df$y/df$x - (1.96*seiv),xmax = df$y/df$x + (1.96*seiv))
+
+ggplot(data = dfunnel,aes(x = x,y = y)) + 
+  geom_point(size=2) + 
+  geom_text(aes(label=irsnps_for_MR_names),vjust=-0.4) +
+  geom_errorbarh(aes(xmin = xmin,xmax = xmax)) +
+  geom_vline(xintercept=0) +
+  geom_vline(xintercept=IVW_beta[5],col="red") +
+  geom_vline(xintercept=loglik_beta[5],col="blue") +
+  ggtitle("Insulin resistance - MAG(18:1) - KORA/TwinsUK - Instrument strength against IV estimate") +
+  labs(y="IV strength",x="IV estimate") +
+  ylim(0,5) + xlim(-2,2)
+
+## KORA MAG 18:2 ##
+df <- data.frame(x = ir_magic_snps$effect/0.2280594, y = kora_b[,6],
+                 ymin = kora_b[,6] - (1.96*kora_se[,6]),ymax = kora_b[,6] + (1.96*kora_se[,6]),
+                 xmin = ir_magic_snps$effect/0.2280594 - (1.96*(ir_magic_snps$stderr/0.2280594)),
+                 xmax = ir_magic_snps$effect/0.2280594 + (1.96*(ir_magic_snps$stderr/0.2280594)))
+
+ggplot(data = df,aes(x = x,y = y)) + geom_point() + 
+  #geom_text(aes(label=oleate_kora_2$MarkerName),cex=4,col="darkblue") +
+  geom_errorbar(aes(ymin = ymin,ymax = ymax)) + 
+  geom_errorbarh(aes(xmin = xmin,xmax = xmax)) +
+  # geom_smooth(method='lm',formula=y~x,se=F,col="black",fullrange=T, linetype="dotted") +
+  geom_hline(aes(yintercept=0)) +
+  geom_vline(aes(xintercept=0)) +
+  ggtitle("Insulin resistance - MAG(18:2) - KORA/TwinsUK (n=2,797)") + 
+  theme(axis.text=element_text(size=12),axis.title=element_text(size=16)) +
+  labs(x="Genetic association with IR (log-HOMA-IR in SD-units, MAGIC, n=46,186)",
+       y="Genetic association with plasma metabolite (SD-units)") +
+  geom_abline(slope = IVW_beta[6], intercept = 0, col="red") +
+  geom_abline(slope = loglik_beta[6], intercept = 0, col="blue") +
+  xlim(-0.04,0.14) +
+  geom_abline(slope = MREgger_KORA[which(MREgger_KORA$Metabolite=="MAG(18:2)")[2],1], 
+              intercept = MREgger_KORA[which(MREgger_KORA$Metabolite=="MAG(18:2)")[1],1], linetype="dotted") 
+
+seiv <- abs(df$y/df$x) * sqrt(((kora_se[,6]/kora_b[,6])^2) + ((ir_magic_snps$stderr/df$x)^2))
+dfunnel <- data.frame(y = df$x/kora_se[,6],x = df$y/df$x,xmin = df$y/df$x - (1.96*seiv),xmax = df$y/df$x + (1.96*seiv))
+
+ggplot(data = dfunnel,aes(x = x,y = y)) + 
+  geom_point(size=2) + 
+  geom_text(aes(label=irsnps_for_MR_names),vjust=-0.4) +
+  geom_errorbarh(aes(xmin = xmin,xmax = xmax)) +
+  geom_vline(xintercept=0) +
+  geom_vline(xintercept=IVW_beta[6],col="red") +
+  geom_vline(xintercept=loglik_beta[6],col="blue") +
+  ggtitle("Insulin resistance - MAG(18:2) - KORA/TwinsUK - Instrument strength against IV estimate") +
+  labs(y="IV strength",x="IV estimate") +
+  ylim(0,5) + xlim(-3,3)
+
+## KORA gamma Tocopherol ##
+df <- data.frame(x = ir_magic_snps$effect/0.2280594, y = kora_b[,7],
+                 ymin = kora_b[,7] - (1.96*kora_se[,7]),ymax = kora_b[,7] + (1.96*kora_se[,7]),
+                 xmin = ir_magic_snps$effect/0.2280594 - (1.96*(ir_magic_snps$stderr/0.2280594)),
+                 xmax = ir_magic_snps$effect/0.2280594 + (1.96*(ir_magic_snps$stderr/0.2280594)))
+
+ggplot(data = df,aes(x = x,y = y)) + geom_point() + 
+  # geom_text(aes(label=oleate_kora_2$MarkerName),cex=4,col="darkblue") +
+  geom_errorbar(aes(ymin = ymin,ymax = ymax)) + 
+  geom_errorbarh(aes(xmin = xmin,xmax = xmax)) +
+  #geom_smooth(method='lm',formula=y~x,se=F,col="black",fullrange=T, linetype="dotted") +
+  geom_hline(aes(yintercept=0)) +
+  geom_vline(aes(xintercept=0)) +
+  ggtitle("Insulin resistance - gamma-Tocopherol - KORA/TwinsUK (n=7,203)") + 
+  theme(axis.text=element_text(size=12),axis.title=element_text(size=16)) +
+  labs(x="Genetic association with IR (log-HOMA-IR in SD-units, MAGIC, n=46,186)",
+       y="Genetic association with plasma metabolite (SD-units)") +
+  geom_abline(slope = IVW_beta[7], intercept = 0, col="red") +
+  geom_abline(slope = loglik_beta[7], intercept = 0, col="blue") +
+  xlim(-0.04,0.14) +
+  geom_abline(slope = MREgger_KORA[which(MREgger_KORA$Metabolite=="Gamma Tocopherol")[2],1], 
+              intercept = MREgger_KORA[which(MREgger_KORA$Metabolite=="Gamma Tocopherol")[1],1], linetype="dotted") 
+
+seiv <- abs(df$y/df$x) * sqrt(((kora_se[,7]/kora_b[,7])^2) + ((ir_magic_snps$stderr/df$x)^2))
+dfunnel <- data.frame(y = df$x/kora_se[,7],x = df$y/df$x,xmin = df$y/df$x - (1.96*seiv),xmax = df$y/df$x + (1.96*seiv))
+
+ggplot(data = dfunnel,aes(x = x,y = y)) + 
+  geom_point(size=2) + 
+  geom_text(aes(label=irsnps_for_MR_names),vjust=-0.4) +
+  geom_errorbarh(aes(xmin = xmin,xmax = xmax)) +
+  geom_vline(xintercept=0) +
+  geom_vline(xintercept=IVW_beta[7],col="red") +
+  geom_vline(xintercept=loglik_beta[7],col="blue") +
+  ggtitle("Insulin resistance - gamma-Tocopherol - KORA/TwinsUK - Instrument strength against IV estimate") +
+  labs(y="IV strength",x="IV estimate") +
+  ylim(0,5) + xlim(-3,3)
+
+##### ##### CHARGE ###### #####
+
+oleate_charge_2 <- read.table("oleate_charge_2.txt")
+palmit_charge_2 <- read.table("palmit_charge_2.txt")
+  
+  ## SD-unit (see main script) 
+c_oleate_sd <- sqrt(((1.1^2)*3269 + (1.2^2)*1507 + (1.1^2)*2404 + (3.7^2)*1075 + (1.2^2)*706) / (3269+1507+2404+1075+706))
+c_palmit_sd <- sqrt(((0.18^2)*3269 + (0.22^2)*1507 + (0.21^2)*2404 + (0.9^2)*1075 + (0.25^2)*706) / (3269+1507+2404+1075+706))
+oleate_charge_2$Effect2 <- oleate_charge_2$Effect2 / (c_oleate_sd )
+oleate_charge_2$StdErr <- oleate_charge_2$StdErr / (c_oleate_sd )
+palmit_charge_2$Effect2 <- palmit_charge_2$Effect2 / (c_palmit_sd )
+palmit_charge_2$StdErr <- palmit_charge_2$StdErr / (c_palmit_sd )
+
+charge_b <- cbind(oleate_charge_2$Effect2,palmit_charge_2$Effect2)
+charge_se <- cbind(oleate_charge_2$StdErr,palmit_charge_2$StdErr)
+
+  ## IVW, loglik, MR Egger
+x = ir_magic_snps$effect/0.2280594 
+sigmax = ir_magic_snps$stderr/0.2280594
+y = charge_b
+sigmay = charge_se
+
+IVW_beta <- NULL;IVW_se <- NULL
+for(i in 1:ncol(charge_b)){
+  IVW_beta <- c(IVW_beta,sum(x*y[,i]/sigmay[,i]^2)/sum(x^2/sigmay[,i]^2))
+  IVW_se <- c(IVW_se,sqrt(1/sum(x^2/sigmay[,i]^2)))
+}
+
+loglik_beta <- NULL;loglik_se <- NULL;hetero_pval <- NULL
+for(i in 1:ncol(charge_b)){
+  loglikelihood <- function(param) {             
+    return(1/2*sum((x-param[1:length(x)])^2/sigmax^2)+1/2*
+             sum((y[,i]-param[length(x)+1]*param[1:length(x)])^2/sigmay[,i]^2)) }
+  opt = optim(c(x, sum(x*y[,i]/sigmay[,i]^2)/sum(x^2/sigmay[,i]^2)),loglikelihood, hessian=TRUE, control = list(maxit=25000))
+  loglik_beta <- c(loglik_beta,opt$par[length(x)+1])
+  loglik_se <- c(loglik_se,sqrt(solve(opt$hessian)[length(x)+1,length(x)+1]))
+  hetero_pval <- c(hetero_pval,round(pchisq(2*opt$value, df=length(x)-1, lower.tail=FALSE),3))
+}
+
+CHARGE_tab1 <- data.frame(c("Oleate","Palmitoleate"), IVW_beta, IVW_se, loglik_beta, loglik_se, hetero_pval)
+colnames(CHARGE_tab1) <- c("Metabolite","IVW_est","IVW_se","LogLikelihood_est","LogLikelihood_se","Heterogeneity_pval")
+
+  ## MR Egger 
+BetaXG = ir_magic_snps$effect/0.2280594 
+seBetaXG = ir_magic_snps$stderr/0.2280594
+BetaYG =  charge_b
+seBetaYG = charge_se 
+MREgger_charge <- list()
+for (i in 1:ncol(charge_b)){
+  BYG             = BetaYG[,i]*sign(BetaXG)   
+  BXG             = abs(BetaXG)         
+  MREggerFit      = summary(lm(BYG ~  BXG,weights=1/seBetaYG[,i]^2))
+  MREggerBeta1    = MREggerFit$coef[1,1]
+  SE1             = MREggerFit$coef[1,2]/min(1,MREggerFit$sigma)
+  DF              = length(BetaYG[,i])-2
+  MRBeta1_p       = 2*(1-pt(abs(MREggerBeta1/SE1),DF))
+  MRBeta1_CI      = MREggerBeta1 + c(-1,1)*qt(df=DF, 0.975)*SE1
+  ## Inference with correct standard errors
+  MREggerBeta0   = MREggerFit$coef[1,1]
+  MREggerBeta1   = MREggerFit$coef[2,1]
+  SE0            = MREggerFit$coef[1,2]/min(1,MREggerFit$sigma)
+  SE1            = MREggerFit$coef[2,2]/min(1,MREggerFit$sigma)
+  DF             = length(BetaYG[,i])-2
+  MRBeta0_p      = 2*(1-pt(abs(MREggerBeta0/SE0),DF))
+  MRBeta1_p      = 2*(1-pt(abs(MREggerBeta1/SE1),DF))
+  MRBeta0_CI     = MREggerBeta0 + c(-1,1)*qt(df=DF, 0.975)*SE0
+  MRBeta1_CI     = MREggerBeta1 + c(-1,1)*qt(df=DF, 0.975)*SE1  
+  MREggerResults      = matrix(nrow = 2,ncol = 5)
+  MREggerResults[1,] = c(MREggerBeta0,SE0,MRBeta0_CI,MRBeta0_p)
+  MREggerResults[2,] = c(MREggerBeta1,SE1,MRBeta1_CI,MRBeta1_p)
+  colnames(MREggerResults) <-c("est","se","lci","uci","pval")
+  MREgger_charge[[i]] <- MREggerResults
+}
+
+MREgger_CHARGE <- data.frame(do.call(rbind.data.frame, MREgger_charge))
+MREgger_CHARGE$Metabolite <- c(rep("Oleic acid",2),rep("Palmitoleic acid",2))
+
+# write.table(MREgger_CHARGE,"MREGGER_CHARGE.txt")
+
+## CHARGE Oleic acid ##
+df <- data.frame(x = ir_magic_snps$effect/0.2280594, y = charge_b[,1],
+                 ymin = charge_b[,1] - (1.96*charge_se[,1]),ymax = charge_b[,1] + (1.96*charge_se[,1]),
+                 xmin = ir_magic_snps$effect/0.2280594 - (1.96*(ir_magic_snps$stderr/0.2280594)),
+                 xmax = ir_magic_snps$effect/0.2280594 + (1.96*(ir_magic_snps$stderr/0.2280594)))
+
+ggplot(data = df,aes(x = x,y = y)) + geom_point() + 
+  # geom_text(aes(label=oleate_charge_2$MarkerName),cex=4,col="darkblue") +
+  geom_errorbar(aes(ymin = ymin,ymax = ymax)) + 
+  geom_errorbarh(aes(xmin = xmin,xmax = xmax)) +
+  # geom_smooth(method='lm',formula=y~x,se=F,col="black",fullrange=T, linetype="dotted") +
+  geom_hline(aes(yintercept=0)) +
+  geom_vline(aes(xintercept=0)) +
+  ggtitle("Insulin resistance - Oleic acid - CHARGE (n=8,961)") + 
+  theme(axis.text=element_text(size=12),axis.title=element_text(size=16)) +
+  labs(x="Genetic association with IR (log-HOMA-IR in SD-units, MAGIC, n=46,186)",
+       y="Genetic association with plasma metabolite (SD-units)") +
+  geom_abline(slope = IVW_beta[1], intercept = 0, col="red") +
+  geom_abline(slope = loglik_beta[1], intercept = 0, col="blue") +
+  xlim(-0.04,0.14) +
+  geom_abline(slope = MREgger_CHARGE[which(MREgger_CHARGE$Metabolite=="Oleic acid")[2],1], 
+              intercept = MREgger_CHARGE[which(MREgger_CHARGE$Metabolite=="Oleic acid")[1],1], linetype="dotted") 
+
+seiv <- abs(df$y/df$x) * sqrt(((charge_se[,1]/charge_b[,1])^2) + ((ir_magic_snps$stderr/df$x)^2))
+dfunnel <- data.frame(y = df$x/charge_se[,1],x = df$y/df$x,xmin = df$y/df$x - (1.96*seiv),xmax = df$y/df$x + (1.96*seiv))
+
+ggplot(data = dfunnel,aes(x = x,y = y)) + 
+  geom_point(size=2) + 
+  geom_text(aes(label=irsnps_for_MR_names),vjust=-0.4) +
+  geom_errorbarh(aes(xmin = xmin,xmax = xmax)) +
+  geom_vline(xintercept=0) +
+  geom_vline(xintercept=IVW_beta[1],col="red") +
+  geom_vline(xintercept=loglik_beta[1],col="blue") +
+  ggtitle("Insulin resistance - Oleic acid - CHARGE - Instrument strength against IV estimate") +
+  labs(y="IV strength",x="IV estimate") +
+  ylim(0,8) + xlim(-1.5,1.5)
+
+## CHARGE Palmitoleic acid ##
+df <- data.frame(x = ir_magic_snps$effect/0.2280594, y = charge_b[,2],
+                 ymin = charge_b[,2] - (1.96*charge_se[,2]),ymax = charge_b[,2] + (1.96*charge_se[,2]),
+                 xmin = ir_magic_snps$effect/0.2280594 - (1.96*(ir_magic_snps$stderr/0.2280594)),
+                 xmax = ir_magic_snps$effect/0.2280594 + (1.96*(ir_magic_snps$stderr/0.2280594)))
+
+ggplot(data = df,aes(x = x,y = y)) + geom_point() + 
+  # geom_text(aes(label=oleate_charge_2$MarkerName),cex=4,col="darkblue") +
+  geom_errorbar(aes(ymin = ymin,ymax = ymax)) + 
+  geom_errorbarh(aes(xmin = xmin,xmax = xmax)) +
+  # geom_smooth(method='lm',formula=y~x,se=F,col="black",fullrange=T, linetype="dotted") +
+  geom_hline(aes(yintercept=0)) +
+  geom_vline(aes(xintercept=0)) +
+  ggtitle("Insulin resistance - Palmitoleic acid - CHARGE (n=8,961)") + 
+  theme(axis.text=element_text(size=12),axis.title=element_text(size=16)) +
+  labs(x="Genetic association with IR (log-HOMA-IR in SD-units, MAGIC, n=46,186)",
+       y="Genetic association with plasma metabolite (SD-units)") +
+  geom_abline(slope = IVW_beta[2, intercept = 0, col="red") +
+  geom_abline(slope = loglik_beta[2, intercept = 0, col="blue") +
+  xlim(-0.04,0.14) +
+  geom_abline(slope = MREgger_CHARGE[which(MREgger_CHARGE$Metabolite=="Palmitoleic acid")[2],1], 
+              intercept = MREgger_CHARGE[which(MREgger_CHARGE$Metabolite=="Palmitoleic acid")[1],1], linetype="dotted") 
+
+seiv <- abs(df$y/df$x) * sqrt(((charge_se[,2]/charge_b[,2])^2) + ((ir_magic_snps$stderr/df$x)^2))
+dfunnel <- data.frame(y = df$x/charge_se[,2],x = df$y/df$x,xmin = df$y/df$x - (1.96*seiv), xmax = df$y/df$x + (1.96*seiv))
+
+ggplot(data = dfunnel,aes(x = x,y = y)) + 
+  geom_point(size=2) + 
+  geom_text(aes(label=irsnps_for_MR_names),vjust=-0.4) +
+  geom_errorbarh(aes(xmin = xmin,xmax = xmax)) +
+  geom_vline(xintercept=0) +
+  geom_vline(xintercept=IVW_beta[2,col="red") +
+  geom_vline(xintercept=loglik_beta[2,col="blue") +
+  ggtitle("Insulin resistance - Palmitoleic acid - CHARGE - Instrument strength against IV estimate") +
+  labs(y="IV strength",x="IV estimate") + 
+  ylim(0,10) + xlim(-1,1)
+
+##### #####  Finnish ##### ##### 
+
+tyrosine_fin_2 <- read.table("tyrosine_fin_2.txt")
+
+  ## IVW, loglik, MR Egger
+x = ir_magic_snps$effect/0.2280594 
+sigmax = ir_magic_snps$stderr/0.2280594
+y = tyrosine_fin_2$Effect2
+sigmay = tyrosine_fin_2$se
+
+IVW_beta <- NULL;IVW_se <- NULL
+IVW_beta <- c(IVW_beta,sum(x*y/sigmay^2)/sum(x^2/sigmay^2))
+IVW_se <- c(IVW_se,sqrt(1/sum(x^2/sigmay^2)))
+
+loglik_beta <- NULL;loglik_se <- NULL;hetero_pval <- NULL
+loglikelihood <- function(param) {             
+  return(1/2*sum((x-param[1:length(x)])^2/sigmax^2)+1/2*
+           sum((y-param[length(x)+1]*param[1:length(x)])^2/sigmay^2)) }
+opt = optim(c(x, sum(x*y/sigmay^2)/sum(x^2/sigmay^2)),loglikelihood, hessian=TRUE, control = list(maxit=25000))
+loglik_beta <- c(loglik_beta,opt$par[length(x)+1])
+loglik_se <- c(loglik_se,sqrt(solve(opt$hessian)[length(x)+1,length(x)+1]))
+hetero_pval <- c(hetero_pval,round(pchisq(2*opt$value, df=length(x)-1, lower.tail=FALSE),3))
+
+FIN_tab1 <- data.frame("Tyrosine", IVW_beta, IVW_se, loglik_beta, loglik_se, hetero_pval)
+colnames(FIN_tab1) <- c("Metabolite","IVW_est","IVW_se","LogLikelihood_est","LogLikelihood_se","Heterogeneity_pval")
+
+  ## MR Egger regression
+BetaXG = ir_magic_snps$effect/0.2280594 
+seBetaXG = ir_magic_snps$stderr/0.2280594
+BetaYG =  tyrosine_fin_2$Effect2
+seBetaYG =  tyrosine_fin_2$se 
+BYG             = BetaYG*sign(BetaXG)   
+BXG             = abs(BetaXG)         
+MREggerFit      = summary(lm(BYG ~  BXG,weights=1/seBetaYG^2))
+MREggerBeta1    = MREggerFit$coef[1,1]
+SE1             = MREggerFit$coef[1,2]/min(1,MREggerFit$sigma)
+DF              = length(BetaYG[,i])-2
+MRBeta1_p       = 2*(1-pt(abs(MREggerBeta1/SE1),DF))
+MRBeta1_CI      = MREggerBeta1 + c(-1,1)*qt(df=DF, 0.975)*SE1
+MREggerBeta0   = MREggerFit$coef[1,1]
+MREggerBeta1   = MREggerFit$coef[2,1]
+SE0            = MREggerFit$coef[1,2]/min(1,MREggerFit$sigma)
+SE1            = MREggerFit$coef[2,2]/min(1,MREggerFit$sigma)
+DF             = length(BetaYG[,i])-2
+MRBeta0_p      = 2*(1-pt(abs(MREggerBeta0/SE0),DF))
+MRBeta1_p      = 2*(1-pt(abs(MREggerBeta1/SE1),DF))
+MRBeta0_CI     = MREggerBeta0 + c(-1,1)*qt(df=DF, 0.975)*SE0
+MRBeta1_CI     = MREggerBeta1 + c(-1,1)*qt(df=DF, 0.975)*SE1  
+MREggerResults      = matrix(nrow = 2,ncol = 5)
+MREggerResults[1,] = c(MREggerBeta0,SE0,MRBeta0_CI,MRBeta0_p)
+MREggerResults[2,] = c(MREggerBeta1,SE1,MRBeta1_CI,MRBeta1_p)
+colnames(MREggerResults) <-c("est","se","lci","uci","pval")
+MREgger_finnish <- MREggerResults
+
+MREgger_finnish <- data.frame(MREgger_finnish)
+MREgger_finnish$Metabolite <- rep("Tyrosine",2)
+
+# write.table(MREgger_finnish,"MREGGER_FINNISH.txt")
+
+## FINN Tyrosine ##
+df <- data.frame(x = ir_magic_snps$effect/0.2280594, y = tyrosine_fin_2$Effect2,
+                 ymin = tyrosine_fin_2$Effect2 - (1.96*tyrosine_fin_2$se),ymax = tyrosine_fin_2$Effect2 + (1.96*tyrosine_fin_2$se),
+                 xmin = ir_magic_snps$effect/0.2280594 - (1.96*(ir_magic_snps$stderr/0.2280594)),
+                 xmax = ir_magic_snps$effect/0.2280594 + (1.96*(ir_magic_snps$stderr/0.2280594)))
+
+ggplot(data = df,aes(x = x,y = y)) + geom_point() + 
+  # geom_text(aes(label=tyrosine_fin_2$rsid),cex=4,col="darkblue") +
+  geom_errorbar(aes(ymin = ymin,ymax = ymax)) + 
+  geom_errorbarh(aes(xmin = xmin,xmax = xmax)) +
+  # geom_smooth(method='lm',formula=y~x,se=F,col="black",fullrange=T, linetype="dotted") +
+  geom_hline(aes(yintercept=0)) +
+  geom_vline(aes(xintercept=0)) +
+  ggtitle("Insulin resistance - Tyrosine - Finnish (n=8,330)") + 
+  theme(axis.text=element_text(size=12),axis.title=element_text(size=16)) +
+  labs(x="Genetic association with IR (log-HOMA-IR in SD-units, MAGIC, n=46,186)",
+       y="Genetic association with plasma metabolite (SD-units)") +
+  geom_abline(slope = IVW_beta, intercept = 0, col="red") +
+  geom_abline(slope = loglik_beta, intercept = 0, col="blue") +
+  xlim(-0.04,0.14) +
+  geom_abline(slope = MREgger_finnish[which(MREgger_finnish$Metabolite=="Tyrosine")[2],1], 
+              intercept = MREgger_finnish[which(MREgger_finnish$Metabolite=="Tyrosine")[1],1], linetype="dotted") 
+
+seiv <- abs(df$y/df$x) * sqrt(((tyrosine_fin_2$se/tyrosine_fin_2$Effect2)^2) + ((ir_magic_snps$stderr/df$x)^2))
+dfunnel <- data.frame(y = df$x/tyrosine_fin_2$se,x = df$y/df$x,xmin = df$y/df$x - (1.96*seiv),xmax = df$y/df$x + (1.96*seiv))
+
+ggplot(data = dfunnel,aes(x = x,y = y)) + 
+  geom_point(size=2) + 
+  geom_text(aes(label=irsnps_for_MR_names),vjust=-0.4) +
+  geom_errorbarh(aes(xmin = xmin,xmax = xmax)) +
+  geom_vline(xintercept=0) +
+  geom_vline(xintercept=IVW_beta,col="red") +
+  geom_vline(xintercept=loglik_beta,col="blue") +
+  ggtitle("Insulin resistance - Tyrosine - Finnish - Instrument strength against IV estimate") +
+  labs(y="IV strength",x="IV estimate") + 
+  ylim(0,6) + xlim(-2,2)
+
+### for all: export Egger results 
+
+SWE_tab1$cohort <- rep("SWE",nrow(SWE_tab1))
+KORA_tab1$cohort <- rep("KORA",nrow(KORA_tab1))
+CHARGE_tab1$cohort <- rep("CHARGE",nrow(CHARGE_tab1))
+FIN_tab1$cohort <- "FIN"
+MREGGERresults <-rbind(sapply(SWE_tab1, as.character),sapply(KORA_tab1, as.character),sapply(CHARGE_tab1, as.character),sapply(FIN_tab1, as.character))
+
+# write.table(MREGGERresults,"MREGGERresults.txt")
+
+#################################################################
+
+##### ##### ##### #####  ##### ##### ##### ##### ##### ##### ####
+##### ##### ##### ##### Insulin Secretion ##### ##### ##### ##### 
+##### ##### ##### #####  ##### ##### ##### ##### ##### ##### #### 
+
+is_total <- read.table("is_total.txt")
+is_total$Cohort_1 <- 0
+is_total$Cohort_1[which(is.na(is_total$piusnr))] <- 1 # 1 is TWGE
+
+is_snps_in_cohorts <- c("rs2191349", "rs12686676","rs12779790","rs10946398","rs7957197","rs10811661",
+                        "rs7903146","rs5219","rs174550","rs11603334","rs10830963" ,"rs4502156","rs11672660",
+                        "rs4607517","rs5015480","rs2237895","rs11605924","rs560887","rs950994","rs13266634")
+  ## leave out rs1800574 as imputed
+
+is_magic_snps <- magic_is[which(magic_is$snp %in% is_snps$rs_id),] 
+is_magic_snps <- is_magic_snps[order(match(is_magic_snps$snp,is_snps$rs_id)),]
+isrisk <- toupper(is_snps$IR_allele[which(is_snps$rs_id %in% is_magic_snps$snp)])
+is_magic_snps$isrisk <- isrisk
+
+is_magic_snps[which((as.character(is_magic_snps$effect_allele)==is_magic_snps$isrisk)==F),]$effect <-
+  - is_magic_snps[which((as.character(is_magic_snps$effect_allele)==is_magic_snps$isrisk)==F),]$effect
+
+  ## Forest plot
+forest.default(is_magic_snps$effect,sei=is_magic_snps$stderr,psize=1,slab=is_magic_snps$snp,
+               main="IV-Exposure association MAGIC (n=26,037)",xlab="CIR, 95% CI, (SD-units)")
+
+#### IVW, loglik , MR Egger 
+
+issnps_for_MR_names <- names(is_total)[which(names(is_total) %in% is_magic_snps$snp)]
+  ## the sign. metabolites
+metabo_0 <- c("Trihydroxy","Bilirubin")
+metabo <- names(is_total)[which(names(is_total) %in% metabo_0)]
+
+  ## per-snp associations with metabolite - age, sex, cohort adjusted
+IS_Beta<-NULL;IS_SE<-NULL;IS_P<-NULL
+for (i in which(names(is_total) %in% is_magic_snps$snp)){
+  IS_Beta <- rbind(IS_Beta,sapply(which(names(is_total) %in% metabo), function(x) 
+    summary(lm(scale(is_total[,x]) ~ is_total$AGE + is_total$SEX  + is_total$Cohort_1 + is_total[,i]))$coef[5,1]))
+  IS_SE <- rbind(IS_SE,sapply(which(names(is_total) %in% metabo), function(x) 
+    summary(lm(scale(is_total[,x]) ~ is_total$AGE + is_total$SEX + is_total$Cohort_1 + is_total[,i]))$coef[5,2]))
+  IS_P <- rbind(IS_P,sapply(which(names(is_total) %in% metabo), function(x) 
+    summary(lm(scale(is_total[,x]) ~ is_total$AGE + is_total$SEX + is_total$Cohort_1 + is_total[,i]))$coef[5,4]))
+}
+
+colnames(IS_Beta) <- metabo; rownames(IS_Beta) <- issnps_for_MR_names
+colnames(IS_SE) <- metabo; rownames(IS_SE) <- issnps_for_MR_names
+colnames(IS_P) <- metabo; rownames(IS_P) <- issnps_for_MR_names
+IS_Beta <- data.frame(IS_Beta)
+IS_SE <- data.frame(IS_SE)
+
+  ## IVW and loglik methods
+is_magic_snps <- is_magic_snps[order(match(is_magic_snps$snp,rownames(IS_Beta))),]
+
+x = is_magic_snps$effect 
+sigmax = is_magic_snps$stderr
+y = IS_Beta
+sigmay = IS_SE
+
+IVW_beta <- NULL; IVW_se <- NULL
+for(i in 1:ncol(IS_Beta)){
+  ## Pooled estimate from inverse-variance weighted method
+  IVW_beta <- c(IVW_beta,sum(x*y[,i]/sigmay[,i]^2)/sum(x^2/sigmay[,i]^2))
+  IVW_se <- c(IVW_se,sqrt(1/sum(x^2/sigmay[,i]^2)))
+}
+
+loglik_beta <- NULL;loglik_se <- NULL;hetero_pval <- NULL
+for(i in 1:ncol(IS_Beta)){
+  loglikelihood <- function(param) {             
+    return(1/2*sum((x-param[1:length(x)])^2/sigmax^2)+1/2*
+             sum((y[,i]-param[length(x)+1]*param[1:length(x)])^2/sigmay[,i]^2)) }
+  opt = optim(c(x, sum(x*y[,i]/sigmay[,i]^2)/sum(x^2/sigmay[,i]^2)),loglikelihood, hessian=TRUE, control = list(maxit=25000))
+  loglik_beta <- c(loglik_beta,opt$par[length(x)+1])
+  loglik_se <- c(loglik_se,sqrt(solve(opt$hessian)[length(x)+1,length(x)+1]))
+  hetero_pval <- c(hetero_pval,round(pchisq(2*opt$value, df=length(x)-1, lower.tail=FALSE),3))
+}
+
+is_SWE_tab1 <- data.frame(cbind(colnames(IS_Beta), IVW_beta, IVW_se, loglik_beta, loglik_se, hetero_pval))
+colnames(is_SWE_tab1) <- c("Metabolite","IVW_est","IVW_se","LogLikelihood_est","LogLikelihood_se","Heterogeneity_pval")
+
+# write.table(is_SWE_tab1,"is_SWE_tab1.txt")
+
+  ## MR Egger regression
+BetaXG = is_magic_snps$effect 
+seBetaXG = is_magic_snps$stderr
+BetaYG =  IS_Beta
+seBetaYG = IS_SE 
+MREgger <- list()
+for (i in 1:ncol(IS_Beta)){
+  BYG             = BetaYG[,i]*sign(BetaXG)   
+  BXG             = abs(BetaXG)         
+  MREggerFit      = summary(lm(BYG ~  BXG,weights=1/seBetaYG[,i]^2))
+  MREggerBeta1    = MREggerFit$coef[1,1]
+  SE1             = MREggerFit$coef[1,2]/min(1,MREggerFit$sigma)
+  DF              = length(BetaYG[,i])-2
+  MRBeta1_p       = 2*(1-pt(abs(MREggerBeta1/SE1),DF))
+  MRBeta1_CI      = MREggerBeta1 + c(-1,1)*qt(df=DF, 0.975)*SE1
+  ## Inference with correct standard errors
+  MREggerBeta0   = MREggerFit$coef[1,1]
+  MREggerBeta1   = MREggerFit$coef[2,1]
+  SE0            = MREggerFit$coef[1,2]/min(1,MREggerFit$sigma)
+  SE1            = MREggerFit$coef[2,2]/min(1,MREggerFit$sigma)
+  DF             = length(BetaYG[,i])-2
+  MRBeta0_p      = 2*(1-pt(abs(MREggerBeta0/SE0),DF))
+  MRBeta1_p      = 2*(1-pt(abs(MREggerBeta1/SE1),DF))
+  MRBeta0_CI     = MREggerBeta0 + c(-1,1)*qt(df=DF, 0.975)*SE0
+  MRBeta1_CI     = MREggerBeta1 + c(-1,1)*qt(df=DF, 0.975)*SE1  
+  MREggerResults      = matrix(nrow = 2,ncol = 5)
+  MREggerResults[1,] = c(MREggerBeta0,SE0,MRBeta0_CI,MRBeta0_p)
+  MREggerResults[2,] = c(MREggerBeta1,SE1,MRBeta1_CI,MRBeta1_p)
+  colnames(MREggerResults) <-c("est","se","lci","uci","pval")
+  MREgger[[i]] <- MREggerResults
+}
+
+is_MREgger_SWE <- data.frame(do.call(rbind.data.frame, MREgger))
+n <- NULL
+for (i in 1:2){
+  n<-c(n,rep(names(IS_Beta[i]),2))
+}
+is_MREgger_SWE$Metabolite <- n  
+
+# write.table(is_MREgger_SWE,"is_MREGGER_SWE.txt")
+# write.table(is_SWE_tab1,"is_MREgger_SWE.txt")
+
+## Bilirubin ## 
+df <- data.frame(x = is_magic_snps$effect, y = IS_Beta$Bilirubin,
+                 ymin = IS_Beta$Bilirubin - (1.96*IS_SE$Bilirubin),ymax = IS_Beta$Bilirubin + (1.96*IS_SE$Bilirubin),
+                 xmin = is_magic_snps$effect - (1.96*(is_magic_snps$stderr)),
+                 xmax = is_magic_snps$effect + (1.96*(is_magic_snps$stderr)))
+
+ggplot(data = df,aes(x = x,y = y)) + geom_point() + 
+  # geom_text(aes(label=irsnps_for_MR_names),cex=4,col="darkblue") +
+  geom_errorbar(aes(ymin = ymin,ymax = ymax)) + 
+  geom_errorbarh(aes(xmin = xmin,xmax = xmax)) +
+  # geom_smooth(method='lm',formula=y~x,se=F,col="black",fullrange=T, linetype="dotted") + ## simple linear fit through points - not weighted by association strength
+  geom_hline(aes(yintercept=0)) +
+  geom_vline(aes(xintercept=0)) +
+  ggtitle("Impaired insulin secretion - Bilirubin - PIVUS & TwinGene (n=2,613)") + 
+  theme(axis.text=element_text(size=12),axis.title=element_text(size=16)) +
+  labs(x="Genetic association with CIR (SD-units, MAGIC, n=23,037)",
+       y="Genetic association with plasma metabolite (SD-units)") +
+  xlim(-0.25,0.25) + ylim(-0.15,0.15) +
+  geom_abline(slope = IVW_beta[which(colnames(IS_Beta) =="Bilirubin")], intercept = 0, col="red") +
+  geom_abline(slope = loglik_beta[which(colnames(IS_Beta) =="Bilirubin")], intercept = 0, col="blue") +
+  geom_abline(slope = is_MREgger_SWE[which(is_MREgger_SWE$Metabolite=="Bilirubin")[2],1], 
+              intercept = is_MREgger_SWE[which(is_MREgger_SWE$Metabolite=="Bilirubin")[1],1], linetype="dotted") 
+
+seiv <- abs(df$y/df$x) * sqrt(((IS_SE$Bilirubin/IS_Beta$Bilirubin)^2) + ((is_magic_snps$stderr/df$x)^2))
+dfunnel <- data.frame(y = df$x/IS_SE$Bilirubin,x = df$y/df$x,xmin = df$y/df$x - (1.96*seiv),xmax = df$y/df$x + (1.96*seiv))
+
+ggplot(data = dfunnel,aes(x = x,y = abs(y))) + 
+  geom_point(size=2) + 
+  geom_text(aes(label=issnps_for_MR_names),vjust=-0.4) +
+  geom_errorbarh(aes(xmin = xmin,xmax = xmax)) +
+  geom_vline(xintercept=0) +
+  geom_vline(xintercept=IVW_beta[which(colnames(IS_Beta) =="Bilirubin")],col="red") +
+  geom_vline(xintercept=loglik_beta[which(colnames(IS_Beta) =="Bilirubin")],col="blue") +
+  ggtitle("Impaired insulin secretion - Bilirubin - Instrument strength against IV estimate") +
+  labs(y="IV strength",x="IV estimate") +
+  ylim(0,10) + xlim(-6,6)
+
+## Trihydroxy... ##
+df <- data.frame(x = is_magic_snps$effect, y = IS_Beta$Trihydroxy,
+                 ymin = IS_Beta$Trihydroxy - (1.96*IS_SE$Trihydroxy),ymax = IS_Beta$Trihydroxy + (1.96*IS_SE$Trihydroxy),
+                 xmin = is_magic_snps$effect - (1.96*(is_magic_snps$stderr)),
+                 xmax = is_magic_snps$effect + (1.96*(is_magic_snps$stderr)))
+
+ggplot(data = df,aes(x = x,y = y)) + geom_point() + 
+  # geom_text(aes(label=irsnps_for_MR_names),cex=4,col="darkblue") +
+  geom_errorbar(aes(ymin = ymin,ymax = ymax)) + 
+  geom_errorbarh(aes(xmin = xmin,xmax = xmax)) +
+  # geom_smooth(method='lm',formula=y~x,se=F,col="black",fullrange=T, linetype="dotted") + ## simple linear fit through points - not weighted by association strength
+  geom_hline(aes(yintercept=0)) +
+  geom_vline(aes(xintercept=0)) +
+  ggtitle("Impaired insulin secretion - Trihydroxy - PIVUS & TwinGene (n=2,613)") + 
+  theme(axis.text=element_text(size=12),axis.title=element_text(size=16)) +
+  labs(x="Genetic association with CIR (SD-units, MAGIC, n=23,037)",
+       y="Genetic association with plasma metabolite (SD-units)") +
+  xlim(-0.3,0.3) + ylim(-0.3,0.3) +
+  geom_abline(slope = IVW_beta[which(colnames(IS_Beta) =="Trihydroxy")], intercept = 0, col="red") +
+  geom_abline(slope = loglik_beta[which(colnames(IS_Beta) =="Trihydroxy")], intercept = 0, col="blue") +
+  geom_abline(slope = is_MREgger_SWE[which(is_MREgger_SWE$Metabolite=="Trihydroxy")[2],1], 
+              intercept = is_MREgger_SWE[which(is_MREgger_SWE$Metabolite=="Trihydroxy")[1],1], linetype="dotted") 
+
+seiv <- abs(df$y/df$x) * sqrt(((IS_SE$Trihydroxy/IS_Beta$Trihydroxy)^2) + ((is_magic_snps$stderr/df$x)^2))
+dfunnel <- data.frame(y = df$x/IS_SE$Trihydroxy,x = df$y/df$x,xmin = df$y/df$x - (1.96*seiv),xmax = df$y/df$x + (1.96*seiv))
+
+ggplot(data = dfunnel,aes(x = x,y = abs(y))) + 
+  geom_point(size=2) + 
+  geom_text(aes(label=issnps_for_MR_names),vjust=-0.4) +
+  geom_errorbarh(aes(xmin = xmin,xmax = xmax)) +
+  geom_vline(xintercept=0) +
+  geom_vline(xintercept=IVW_beta[which(colnames(IS_Beta) =="Trihydroxy")],col="red") +
+  geom_vline(xintercept=loglik_beta[which(colnames(IS_Beta) =="Trihydroxy")],col="blue") +
+  ggtitle("Impaired insulin secretion - Trihydroxy - Instrument strength against IV estimate") +
+  labs(y="IV strength",x="IV estimate") +
+  ylim(0,8) + xlim(-7,7)
+
+##### ##### KORA Bilirubin ##### #####
+
+b3_kora <- read.table("b3_kora.txt")
+
+is_magic_snps <- is_magic_snps[order(match(is_magic_snps$snp,as.character(b3_kora[,1]))),]
+
+x = is_magic_snps$effect 
+sigmax = is_magic_snps$stderr
+y = b3_kora$b_b3_kora
+sigmay = b3_kora$s_b3_kora
+
+IVW_beta <- NULL;IVW_se <- NULL
+IVW_beta <- c(IVW_beta,sum(x*y/sigmay^2)/sum(x^2/sigmay^2))
+IVW_se <- c(IVW_se,sqrt(1/sum(x^2/sigmay^2)))
+
+loglik_beta <- NULL;loglik_se <- NULL;hetero_pval <- NULL
+loglikelihood <- function(param) {             
+  return(1/2*sum((x-param[1:length(x)])^2/sigmax^2)+1/2*
+           sum((y-param[length(x)+1]*param[1:length(x)])^2/sigmay^2)) }
+opt = optim(c(x, sum(x*y/sigmay^2)/sum(x^2/sigmay^2)),loglikelihood, hessian=TRUE, control = list(maxit=25000))
+loglik_beta <- c(loglik_beta,opt$par[length(x)+1])
+loglik_se <- c(loglik_se,sqrt(solve(opt$hessian)[length(x)+1,length(x)+1]))
+hetero_pval <- c(hetero_pval,round(pchisq(2*opt$value, df=length(x)-1, lower.tail=FALSE),3))
+
+is_KORA_tab1 <- data.frame(cbind("Bilirubin_kora", IVW_beta, IVW_se, loglik_beta, loglik_se, hetero_pval))
+colnames(is_KORA_tab1) <- c("Metabolite","IVW_est","IVW_se","LogLikelihood_est","LogLikelihood_se","Heterogeneity_pval")
+
+# write.table(is_KORA_tab1,"is_KORA_tab1.txt")
+
+  ## MR Egger regression
+BetaXG = is_magic_snps$effect 
+seBetaXG = is_magic_snps$stderr
+BetaYG =  b3_kora$b_b3_kora
+seBetaYG = b3_kora$s_b3_kora 
+MREgger <- NULL
+BYG             = BetaYG*sign(BetaXG)   
+BXG             = abs(BetaXG)         
+MREggerFit      = summary(lm(BYG ~  BXG,weights=1/seBetaYG^2))
+MREggerBeta1    = MREggerFit$coef[1,1]
+SE1             = MREggerFit$coef[1,2]/min(1,MREggerFit$sigma)
+DF              = length(BetaYG)-2
+MRBeta1_p       = 2*(1-pt(abs(MREggerBeta1/SE1),DF))
+MRBeta1_CI      = MREggerBeta1 + c(-1,1)*qt(df=DF, 0.975)*SE1
+MREggerBeta0   = MREggerFit$coef[1,1]
+MREggerBeta1   = MREggerFit$coef[2,1]
+SE0            = MREggerFit$coef[1,2]/min(1,MREggerFit$sigma)
+SE1            = MREggerFit$coef[2,2]/min(1,MREggerFit$sigma)
+DF             = length(BetaYG)-2
+MRBeta0_p      = 2*(1-pt(abs(MREggerBeta0/SE0),DF))
+MRBeta1_p      = 2*(1-pt(abs(MREggerBeta1/SE1),DF))
+MRBeta0_CI     = MREggerBeta0 + c(-1,1)*qt(df=DF, 0.975)*SE0
+MRBeta1_CI     = MREggerBeta1 + c(-1,1)*qt(df=DF, 0.975)*SE1  
+MREggerResults      = matrix(nrow = 2,ncol = 5)
+MREggerResults[1,] = c(MREggerBeta0,SE0,MRBeta0_CI,MRBeta0_p)
+MREggerResults[2,] = c(MREggerBeta1,SE1,MRBeta1_CI,MRBeta1_p)
+colnames(MREggerResults) <-c("est","se","lci","uci","pval")
+MREgger <- MREggerResults
+
+# write.table(MREgger,"MREggerBilirubin_kora.txt")
+
+df <- data.frame(x = is_magic_snps$effect, y = b3_kora$b_b3_kora,
+                 ymin = b3_kora$b_b3_kora - (1.96*b3_kora$s_b3_kora),ymax = b3_kora$b_b3_kora + (1.96*b3_kora$s_b3_kora),
+                 xmin = is_magic_snps$effect - (1.96*(is_magic_snps$stderr)),
+                 xmax = is_magic_snps$effect + (1.96*(is_magic_snps$stderr)))
+
+ggplot(data = df,aes(x = x,y = y)) + geom_point() + 
+  # geom_text(aes(label=tyrosine_fin_2$rsid),cex=4,col="darkblue") +
+  geom_errorbar(aes(ymin = ymin,ymax = ymax)) + 
+  geom_errorbarh(aes(xmin = xmin,xmax = xmax)) +
+  # geom_smooth(method='lm',formula=y~x,se=F,col="black",fullrange=T, linetype="dotted") +
+  geom_hline(aes(yintercept=0)) +
+  geom_vline(aes(xintercept=0)) +
+  ggtitle("Impaired insulin secretion - Bilirubin Z,Z - KORA/TwinsUK (n=6,812)") + 
+  theme(axis.text=element_text(size=12),axis.title=element_text(size=16)) +
+  labs(x="Genetic association with CIR (SD-units, MAGIC, n=23,037)",
+       y="Genetic association with plasma metabolite (SD-units)") +
+  geom_abline(slope = IVW_beta, intercept = 0, col="red") +
+  geom_abline(slope = loglik_beta, intercept = 0, col="blue") +
+  xlim(-0.25,0.25) +
+  geom_abline(slope = MREgger[2,1], 
+              intercept = MREgger[1,1], linetype="dotted") 
+
+seiv <- abs(df$y/df$x) * sqrt(((b3_kora$s_b3_kora/b3_kora$b_b3_kora)^2) + ((is_magic_snps$stderr/df$x)^2))
+dfunnel <- data.frame(y = df$x/b3_kora$s_b3_kora,x = df$y/df$x,xmin = df$y/df$x - (1.96*seiv),xmax = df$y/df$x + (1.96*seiv))
+
+ggplot(data = dfunnel,aes(x = x,y = abs(y))) + 
+  geom_point(size=2) + 
+  geom_text(aes(label=issnps_for_MR_names),vjust=-0.4) +
+  geom_errorbarh(aes(xmin = xmin,xmax = xmax)) +
+  geom_vline(xintercept=0) +
+  geom_vline(xintercept=IVW_beta,col="red") +
+  geom_vline(xintercept=loglik_beta,col="blue") +
+  ggtitle("Impaired insulin secretion - Bilirubin - KORA/TwinsUK - Instrument strength against IV estimate") +
+  labs(y="IV strength",x="IV estimate")  +
+  ylim(0,8) + xlim(-17,17)
+
+#################################################
+### other-phenotypes-forest plots
+
+COMB <- read.table("pleitropy_forest_master1.txt")
+d <- c("Clamp M/I (Scott et al.)","Clamp M/I (current study)","IGI30","HbA1c","Glucose","Insulin","WHR","Waist","BMI","SPB","DBP","log-CRP","TG","Cholesterol","HDL-chol","LDL-chol", "log-ApoA1","log-ApoB","Urea","CK","Hb","Amylase","Adiponectin","log-Bilirubin","Albumin","log-IL-6","ALP","ALT")
+
+a1<-summary(lm( scale(COMB$HBA1C)~COMB$CNT2+COMB$AGE+COMB$SEX+COMB$Cohort_1+COMB$Cohort_2))$coeff[2,1]
+a2<-summary(lm(scale( COMB$GLUCOSE)~COMB$CNT2+COMB$AGE+COMB$SEX+COMB$Cohort_1+COMB$Cohort_2))$coeff[2,1]
+a3<-summary(lm(scale( COMB$INSULIN)~COMB$CNT2+COMB$AGE+COMB$SEX+COMB$Cohort_1+COMB$Cohort_2))$coeff[2,1]
+a4<-summary(lm(scale( COMB$IGI30)~COMB$CNT2+COMB$AGE+COMB$SEX+COMB$Cohort_1+COMB$Cohort_2))$coeff[2,1]
+a5<-summary(lm(scale( COMB$CLAMP)~COMB$CNT2+COMB$AGE+COMB$SEX+COMB$Cohort_1+COMB$Cohort_2))$coeff[2,1]
+a6<-summary(lm(scale(COMB$WHR)~COMB$CNT2+COMB$AGE+COMB$SEX+COMB$Cohort_1+COMB$Cohort_2))$coeff[2,1]
+a7<-summary(lm(scale( COMB$WAIST)~COMB$CNT2+COMB$AGE+COMB$SEX+COMB$Cohort_1+COMB$Cohort_2))$coeff[2,1]
+a8<-summary(lm(scale( COMB$BMI)~COMB$CNT2+COMB$AGE+COMB$SEX+COMB$Cohort_1+COMB$Cohort_2))$coeff[2,1]
+a9<-summary(lm(scale( COMB$SPB)~COMB$CNT2+COMB$AGE+COMB$SEX+COMB$Cohort_1+COMB$Cohort_2))$coeff[2,1]
+b1<-summary(lm(scale( COMB$DBP)~COMB$CNT2+COMB$AGE+COMB$SEX+COMB$Cohort_1+COMB$Cohort_2))$coeff[2,1]
+b2<-summary(lm( scale(COMB$CRP)~COMB$CNT2+COMB$AGE+COMB$SEX+COMB$Cohort_1+COMB$Cohort_2))$coeff[2,1]
+b3<-summary(lm( scale(COMB$TG)~COMB$CNT2+COMB$AGE+COMB$SEX+COMB$Cohort_1+COMB$Cohort_2))$coeff[2,1]
+b4<-summary(lm(scale( COMB$CHOL)~COMB$CNT2+COMB$AGE+COMB$SEX+COMB$Cohort_1+COMB$Cohort_2))$coeff[2,1]
+b5<-summary(lm( scale(COMB$HDL)~COMB$CNT2+COMB$AGE+COMB$SEX+COMB$Cohort_1+COMB$Cohort_2))$coeff[2,1]
+b6<-summary(lm(scale( COMB$LDL)~COMB$CNT2+COMB$AGE+COMB$SEX+COMB$Cohort_1+COMB$Cohort_2))$coeff[2,1]
+b7<-summary(lm(scale(COMB$APOA1)~COMB$CNT2+COMB$AGE+COMB$SEX+COMB$Cohort_1+COMB$Cohort_2))$coeff[2,1]
+b8<-summary(lm(scale(COMB$APOB)~COMB$CNT2+COMB$AGE+COMB$SEX+COMB$Cohort_1+COMB$Cohort_2))$coeff[2,1]
+b9<-summary(lm(scale(COMB$UREA)~COMB$CNT2+COMB$AGE+COMB$SEX+COMB$Cohort_1+COMB$Cohort_2))$coeff[2,1]
+c1<-summary(lm(scale( COMB$CK)~COMB$CNT2+COMB$AGE+COMB$SEX+COMB$Cohort_1+COMB$Cohort_2))$coeff[2,1]
+c2<-summary(lm(scale(COMB$HB)~COMB$CNT2+COMB$AGE+COMB$SEX+COMB$Cohort_1+COMB$Cohort_2))$coeff[2,1]
+c3<-summary(lm(scale(COMB$AMYLASE)~COMB$CNT2+COMB$AGE+COMB$SEX+COMB$Cohort_1+COMB$Cohort_2))$coeff[2,1]
+c4<-summary(lm(scale(COMB$ADIPONECTIN)~COMB$CNT2+COMB$AGE+COMB$SEX+COMB$Cohort_1+COMB$Cohort_2))$coeff[2,1]
+c5<-summary(lm(scale(COMB$BILIRUBIN)~COMB$CNT2+COMB$AGE+COMB$SEX+COMB$Cohort_1+COMB$Cohort_2))$coeff[2,1]
+c6<-summary(lm(scale( COMB$ALBUMIN)~COMB$CNT2+COMB$AGE+COMB$SEX+COMB$Cohort_1+COMB$Cohort_2))$coeff[2,1]
+c7<-summary(lm(scale( COMB$IL6)~COMB$CNT2+COMB$AGE+COMB$SEX+COMB$Cohort_1+COMB$Cohort_2))$coeff[2,1]
+c8<-summary(lm(scale(COMB$ALK)~COMB$CNT2+COMB$AGE+COMB$SEX+COMB$Cohort_1+COMB$Cohort_2))$coeff[2,1]
+c9<-summary(lm( scale(COMB$ALT)~COMB$CNT2+COMB$AGE+COMB$SEX+COMB$Cohort_1+COMB$Cohort_2))$coeff[2,1]
+igi<-summary(lm( scale(COMB$IGI30)~COMB$CNT2+COMB$AGE+COMB$SEX+COMB$Cohort_1+COMB$Cohort_2))$coeff[2,1]
+sigi<-summary(lm( scale(COMB$IGI30)~COMB$CNT2+COMB$AGE+COMB$SEX+COMB$Cohort_1+COMB$Cohort_2))$coeff[2,2]
+
+sa1<-summary(lm( scale(COMB$HBA1C)~COMB$CNT2+COMB$AGE+COMB$SEX+COMB$Cohort_1+COMB$Cohort_2))$coeff[2,2]
+sa2<-summary(lm(scale( COMB$GLUCOSE)~COMB$CNT2+COMB$AGE+COMB$SEX+COMB$Cohort_1+COMB$Cohort_2))$coeff[2,2]
+sa3<-summary(lm(scale( COMB$CLAMP)~COMB$CNT2+COMB$AGE+COMB$SEX+COMB$Cohort_1+COMB$Cohort_2))$coeff[2,2]
+sa4<-summary(lm(scale( COMB$IGI30)~COMB$CNT2+COMB$AGE+COMB$SEX+COMB$Cohort_1+COMB$Cohort_2))$coeff[2,2]
+sa5<-summary(lm(scale( COMB$INSULIN)~COMB$CNT2+COMB$AGE+COMB$SEX+COMB$Cohort_1+COMB$Cohort_2))$coeff[2,2]
+sa6<-summary(lm(scale(COMB$WHR)~COMB$CNT2+COMB$AGE+COMB$SEX+COMB$Cohort_1+COMB$Cohort_2))$coeff[2,2]
+sa7<-summary(lm(scale( COMB$WAIST)~COMB$CNT2+COMB$AGE+COMB$SEX+COMB$Cohort_1+COMB$Cohort_2))$coeff[2,2]
+sa8<-summary(lm(scale( COMB$BMI)~COMB$CNT2+COMB$AGE+COMB$SEX+COMB$Cohort_1+COMB$Cohort_2))$coeff[2,2]
+sa9<-summary(lm(scale( COMB$SPB)~COMB$CNT2+COMB$AGE+COMB$SEX+COMB$Cohort_1+COMB$Cohort_2))$coeff[2,2]
+sb1<-summary(lm(scale( COMB$DBP)~COMB$CNT2+COMB$AGE+COMB$SEX+COMB$Cohort_1+COMB$Cohort_2))$coeff[2,2]
+sb2<-summary(lm( scale(COMB$CRP)~COMB$CNT2+COMB$AGE+COMB$SEX+COMB$Cohort_1+COMB$Cohort_2))$coeff[2,2]
+sb3<-summary(lm( scale(COMB$TG)~COMB$CNT2+COMB$AGE+COMB$SEX+COMB$Cohort_1+COMB$Cohort_2))$coeff[2,2]
+sb4<-summary(lm(scale( COMB$CHOL)~COMB$CNT2+COMB$AGE+COMB$SEX+COMB$Cohort_1+COMB$Cohort_2))$coeff[2,2]
+sb5<-summary(lm( scale(COMB$HDL)~COMB$CNT2+COMB$AGE+COMB$SEX+COMB$Cohort_1+COMB$Cohort_2))$coeff[2,2]
+sb6<-summary(lm(scale( COMB$LDL)~COMB$CNT2+COMB$AGE+COMB$SEX+COMB$Cohort_1+COMB$Cohort_2))$coeff[2,2]
+sb7<-summary(lm(scale(COMB$APOB)~COMB$CNT2+COMB$AGE+COMB$SEX+COMB$Cohort_1+COMB$Cohort_2))$coeff[2,2]
+sb8<-summary(lm(scale(COMB$APOA1)~COMB$CNT2+COMB$AGE+COMB$SEX+COMB$Cohort_1+COMB$Cohort_2))$coeff[2,2]
+sb9<-summary(lm(scale(COMB$UREA)~COMB$CNT2+COMB$AGE+COMB$SEX+COMB$Cohort_1+COMB$Cohort_2))$coeff[2,2]
+sc1<-summary(lm(scale( COMB$CK)~COMB$CNT2+COMB$AGE+COMB$SEX+COMB$Cohort_1+COMB$Cohort_2))$coeff[2,2]
+sc2<-summary(lm(scale(COMB$HB)~COMB$CNT2+COMB$AGE+COMB$SEX+COMB$Cohort_1+COMB$Cohort_2))$coeff[2,2]
+sc3<-summary(lm(scale(COMB$AMYLASE)~COMB$CNT2+COMB$AGE+COMB$SEX+COMB$Cohort_1+COMB$Cohort_2))$coeff[2,2]
+sc4<-summary(lm(scale(COMB$ADIPONECTIN)~COMB$CNT2+COMB$AGE+COMB$SEX+COMB$Cohort_1+COMB$Cohort_2))$coeff[2,2]
+sc5<-summary(lm(scale(COMB$BILIRUBIN)~COMB$CNT2+COMB$AGE+COMB$SEX+COMB$Cohort_1+COMB$Cohort_2))$coeff[2,2]
+sc6<-summary(lm(scale( COMB$ALBUMIN)~COMB$CNT2+COMB$AGE+COMB$SEX+COMB$Cohort_1+COMB$Cohort_2))$coeff[2,2]
+sc7<-summary(lm(scale( COMB$IL6)~COMB$CNT2+COMB$AGE+COMB$SEX+COMB$Cohort_1+COMB$Cohort_2))$coeff[2,2]
+sc8<-summary(lm(scale(COMB$ALK)~COMB$CNT2+COMB$AGE+COMB$SEX+COMB$Cohort_1+COMB$Cohort_2))$coeff[2,2]
+sc9<-summary(lm( scale(COMB$ALT)~COMB$CNT2+COMB$AGE+COMB$SEX+COMB$Cohort_1+COMB$Cohort_2))$coeff[2,2]
+
+par(mfrow=c(1,1))
+library(metafor)
+x<-c(-0.03,a5,igi,a1,a2,a3,a6,a7,a8,a9,b1,b2,b3,b4,b5,b6,b7,b8,b9,c1,c2,c3,c4,c5,c6,c7,c8,c9)
+se<-c(0.007653061,sa5,sigi,sa1,sa2,sa3,sa6,sa7,sa8,sa9,sb1,sb2,sb3,sb4,sb5,sb6,sb7,sb8,sb9,sc1,sc2,sc3,sc4,sc5,sc6,sc7,sc8,sc9)
+
+# pdf("IRscore_association_Covariates.pdf")
+forest.default(x,sei=se,psize=1,slab=d,refline=0,showweights=F,
+               xlab="Beta coeff, 95%CI, SD-UNIT",main="Insulin resistance genetic score association with covariates"
+               ,alim=c(-0.2,0.2),xlim=c(-0.25,0.25),dig=3,
+               col=c(rep(c("brown4","dodgerblue4","darkorange2","darkgreen"),6),"brown4","dodgerblue4","darkorange2",
+                     "darkgreen"))
+# dev.off()
