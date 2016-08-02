@@ -1,6 +1,6 @@
 
 ### Nowak et al. PLOS Genet submission PGENETICS-D-16-00940
-##### R scripts for the revised analyses of study
+##### R scripts for the revised analysis
 ##### Observational association between insulin response measures in ULSAM and plasma metabolites
 ##### Mendelian Randomization analysis for insulin resistance and impaired insulin response
 ##### Mendelian Randomization sensitivity analyses and plots
