@@ -1474,3 +1474,79 @@ forest.default(x,sei=se,psize=1,slab=d,refline=0,showweights=F,
                col=c(rep(c("brown4","dodgerblue4","darkorange2","darkgreen"),6),"brown4","dodgerblue4","darkorange2",
                      "darkgreen"))
 # dev.off()
+
+#################################################################################
+#### sensitivity analysis: population stratification effects in MR discovery? ###
+#### additional adjustment for genetic principle components PC1, PC2, PC3 #######
+
+pivus_PC <- read.table("~/pivus.+.qced.pca.evec.txt", quote="\"")
+pivus_PC$lpnr <- as.numeric(pivus_PC[,1])
+twge_PC <- read.table("~/twge.+.qced.pca.evec.txt", quote="\"")
+split_1 <- str_split_fixed(as.character(twge_PC[,1]), ":", 2)
+twge_PC$genetic_ID <- (split_1[,1])
+
+COMB$PC1<-c(); COMB$PC2<-c(); COMB$PC3<-c()
+for (i in 1:nrow(COMB)){
+  if (!is.na(COMB$lpnr[i])) COMB$PC1[i] <- pivus_PC[match(COMB$lpnr[i],pivus_PC$lpnr),2]
+  else COMB$PC1[i] <- twge_PC[match(COMB$genetic_ID[i],twge_PC$genetic_ID),2]
+  if (!is.na(COMB$lpnr[i])) COMB$PC2[i] <- pivus_PC[match(COMB$lpnr[i],pivus_PC$lpnr),3]
+  else COMB$PC2[i] <- twge_PC[match(COMB$genetic_ID[i],twge_PC$genetic_ID),3]
+  if (!is.na(COMB$lpnr[i])) COMB$PC3[i] <- pivus_PC[match(COMB$lpnr[i],pivus_PC$lpnr),4]
+  else COMB$PC3[i] <- twge_PC[match(COMB$genetic_ID[i],twge_PC$genetic_ID),4]
+}
+
+CNT2_IR_Beta <- sapply(which(names(COMB) %in% metabonames), function(x)  summary(lm(scale(COMB[,x]) ~ COMB$AGE + COMB$SEX  + COMB$Cohort_1 + COMB$CNT2 + COMB$PC1 + COMB$PC2 + COMB$PC3 ))$coef[5,1])
+CNT2_IR_SE <- sapply(which(names(COMB) %in% metabonames), function(x) summary(lm(scale(COMB[,x]) ~ COMB$AGE + COMB$SEX + COMB$Cohort_1 + COMB$CNT2+ COMB$PC1 + COMB$PC2 + COMB$PC3 ))$coef[5,2])
+CNT2_IR_P <- sapply(which(names(COMB) %in% metabonames), function(x) summary(lm(scale(COMB[,x]) ~ COMB$AGE + COMB$SEX + COMB$Cohort_1 + COMB$CNT2+ COMB$PC1 + COMB$PC2 + COMB$PC3 ))$coef[5,4])
+CNT2_IR_results <- cbind (names(COMB)[which(names(COMB) %in% metabonames)], CNT2_IR_Beta,CNT2_IR_SE,CNT2_IR_P)
+temp0 <- (CNT2_IR_results[order(as.numeric(CNT2_IR_results[,4])),])
+
+SCOTTclamp_beta <- 0.03 
+SCOTTclamp_se <- (-0.01 - -0.04)/3.92
+IR_MR_beta <- sapply(1:52, function(x) CNT2_IR_Beta[x] / SCOTTclamp_beta)
+IR_MR_se <- sapply(1:52, function(x) abs(IR_MR_beta[x])*sqrt( ((CNT2_IR_SE[x]/CNT2_IR_Beta[x])^2)+ ((SCOTTclamp_se/SCOTTclamp_beta)^2) ))
+IR_MR_z <- sapply(1:52, function(x) IR_MR_beta[x] / IR_MR_se[x])
+IR_MR_p <- sapply(1:52, function(x) 2*pnorm(-abs(IR_MR_z[x])))
+IR_MR_results <- cbind(names(COMB)[which(names(COMB) %in% metabonames)],IR_MR_beta,IR_MR_se,IR_MR_z,IR_MR_p)
+temp1 <- IR_MR_results
+
+colnames(temp0)[1]<- "metabo"
+colnames(temp1)[1]<- "metabo"
+temp2 <- merge(temp0,temp1,by="metabo")
+temp2 <- (temp2[order(as.numeric(temp2$IR_MR_p)),])
+
+# write.table(temp2,"IR_withPC.txt")
+
+################################################
+################ IS ############################
+
+COMB <- read.table("P_TWGE_for_MR.txt")
+varnames <- c(metabonames,"SEX","AGE","Cohort_1","CNT2","lpnr","genetic_ID")
+COMB2 <- COMB[,which(names(COMB) %in% varnames)]
+
+COMB2$PC1<-c(); COMB2$PC2<-c(); COMB2$PC3<-c()
+for (i in 1:nrow(COMB2)){
+  if (!is.na(COMB2$lpnr[i])) COMB2$PC1[i] <- pivus_PC[match(COMB2$lpnr[i],pivus_PC$lpnr),2]
+  else COMB2$PC1[i] <- twge_PC[match(COMB2$genetic_ID[i],twge_PC$genetic_ID),2]
+  if (!is.na(COMB2$lpnr[i])) COMB2$PC2[i] <- pivus_PC[match(COMB2$lpnr[i],pivus_PC$lpnr),3]
+  else COMB2$PC2[i] <- twge_PC[match(COMB2$genetic_ID[i],twge_PC$genetic_ID),3]
+  if (!is.na(COMB2$lpnr[i])) COMB2$PC3[i] <- pivus_PC[match(COMB2$lpnr[i],pivus_PC$lpnr),4]
+  else COMB2$PC3[i] <- twge_PC[match(COMB2$genetic_ID[i],twge_PC$genetic_ID),4]
+}
+
+SCOTTinsecr_beta <- 0.05 
+SCOTTinsecr_se <- (-0.06 - -0.04)/3.92
+CNT2_Insecr_Beta <- sapply(which(names(COMB2) %in% metabonames), function(x) summary(lm(scale(COMB2[,x]) ~ COMB2$AGE + COMB2$SEX + COMB2$Cohort_1  + COMB2$CNT2 + COMB2$PC1+ COMB2$PC2 + COMB2$PC3))$coef[5,1])
+CNT2_Insecr_SE <- sapply(which(names(COMB2) %in% metabonames), function(x) summary(lm(scale(COMB2[,x]) ~ COMB2$AGE + COMB2$SEX + COMB2$Cohort_1  + COMB2$CNT2+ COMB2$PC1+ COMB2$PC2 + COMB2$PC3))$coef[5,2])
+CNT2_Insecr_P <- sapply(which(names(COMB2) %in% metabonames), function(x) summary(lm(scale(COMB2[,x]) ~ COMB2$AGE + COMB2$SEX + COMB2$Cohort_1  + COMB2$CNT2+ COMB2$PC1+ COMB2$PC2 + COMB2$PC3))$coef[5,4])
+CNT2_Insec_results <- cbind(names(COMB2)[which(names(COMB2) %in% metabonames)], CNT2_Insecr_Beta,CNT2_Insecr_SE,CNT2_Insecr_P)
+
+Insecr_MR_beta <- sapply(1:length(metabonames), function(x) CNT2_Insecr_Beta[x] / SCOTTinsecr_beta)
+Insecr_MR_se <- sapply(1:length(metabonames), function(x) abs(Insecr_MR_beta[x])*sqrt( ((CNT2_Insecr_SE[x]/CNT2_Insecr_Beta[x])^2)+ ((SCOTTinsecr_se/SCOTTinsecr_beta)^2) ))
+Insecr_MR_z <- sapply(1:length(metabonames), function(x) Insecr_MR_beta[x] / Insecr_MR_se[x])
+Insecr_MR_p <- sapply(1:length(metabonames), function(x) 2*pnorm(-abs(Insecr_MR_z[x])))
+Insecr_MR_results <- cbind(names(COMB2)[which(names(COMB2) %in% metabonames)],Insecr_MR_beta,Insecr_MR_se,Insecr_MR_z,Insecr_MR_p)
+Insecr_MR_results <- Insecr_MR_results[order(Insecr_MR_results[,5]),]
+
+# write.table(Insecr_MR_results,"ISwithPC.txt")
+
