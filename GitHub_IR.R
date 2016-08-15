@@ -38,18 +38,43 @@ metabonames <- c("MAG_18_2","MAG_16_1","MAG_18_1","Piperine","Caffeine","LPE_18_
 #### MR analysis: GRS x metabolite associations, adj. for age, sex, cohort
   ## scaled metabolites, mean = 0, SD = 1
 
+### as requested by reviewers: control for population stratification
+### adjustment for the first 3 genetic principle components 
+
+#### additional adjustment for genetic principle components PC1, PC2, PC3 #######
+
+pivus_PC <- read.table("~/pivus.+.qced.pca.evec.txt", quote="\"")
+pivus_PC$lpnr <- as.numeric(pivus_PC[,1])
+twge_PC <- read.table("~/twge.+.qced.pca.evec.txt", quote="\"")
+split_1 <- str_split_fixed(as.character(twge_PC[,1]), ":", 2)
+twge_PC$genetic_ID <- (split_1[,1])
+
+COMB$PC1<-c(); COMB$PC2<-c(); COMB$PC3<-c()
+for (i in 1:nrow(COMB)){
+  if (!is.na(COMB$lpnr[i])) COMB$PC1[i] <- pivus_PC[match(COMB$lpnr[i],pivus_PC$lpnr),2]
+  else COMB$PC1[i] <- twge_PC[match(COMB$genetic_ID[i],twge_PC$genetic_ID),2]
+  if (!is.na(COMB$lpnr[i])) COMB$PC2[i] <- pivus_PC[match(COMB$lpnr[i],pivus_PC$lpnr),3]
+  else COMB$PC2[i] <- twge_PC[match(COMB$genetic_ID[i],twge_PC$genetic_ID),3]
+  if (!is.na(COMB$lpnr[i])) COMB$PC3[i] <- pivus_PC[match(COMB$lpnr[i],pivus_PC$lpnr),4]
+  else COMB$PC3[i] <- twge_PC[match(COMB$genetic_ID[i],twge_PC$genetic_ID),4]
+}
+COMB$PC1 <- ifelse(is.na(COMB$PC1),mean(COMB$PC1,na.rm=T),COMB$PC1) # few NA's imputed with mean  
+COMB$PC2 <- ifelse(is.na(COMB$PC2),mean(COMB$PC2,na.rm=T),COMB$PC2)
+COMB$PC3 <- ifelse(is.na(COMB$PC3),mean(COMB$PC3,na.rm=T),COMB$PC3)
+
+
 CNT2_IR_Beta <- sapply(which(names(COMB) %in% metabonames), function(x) 
-  summary(lm(scale(COMB[,x]) ~ COMB$AGE + COMB$SEX  + COMB$Cohort_1 + COMB$CNT2))$coef[5,1])
+  summary(lm(scale(COMB[,x]) ~ COMB$AGE + COMB$SEX  + COMB$Cohort_1 + COMB$CNT2 + COMB$PC1 + COMB$PC2 + COMB$PC3))$coef[5,1])
 CNT2_IR_SE <- sapply(which(names(COMB) %in% metabonames), function(x) 
-  summary(lm(scale(COMB[,x]) ~ COMB$AGE + COMB$SEX + COMB$Cohort_1 + COMB$CNT2))$coef[5,2])
+  summary(lm(scale(COMB[,x]) ~ COMB$AGE + COMB$SEX + COMB$Cohort_1 + COMB$CNT2 + COMB$PC1 + COMB$PC2 + COMB$PC3))$coef[5,2])
 CNT2_IR_P <- sapply(which(names(COMB) %in% metabonames), function(x) 
-  summary(lm(scale(COMB[,x]) ~ COMB$AGE + COMB$SEX + COMB$Cohort_1 + COMB$CNT2))$coef[5,4])
+  summary(lm(scale(COMB[,x]) ~ COMB$AGE + COMB$SEX + COMB$Cohort_1 + COMB$CNT2 + COMB$PC1 + COMB$PC2 + COMB$PC3))$coef[5,4])
 CNT2_IR_Fstat <- sapply(which(names(COMB) %in% metabonames), function(x) 
-  summary(lm(scale(COMB[,x]) ~ COMB$AGE + COMB$SEX + COMB$Cohort_1 + COMB$CNT2))$fstatistic[1])
+  summary(lm(scale(COMB[,x]) ~ COMB$AGE + COMB$SEX + COMB$Cohort_1 + COMB$CNT2 + COMB$PC1 + COMB$PC2 + COMB$PC3))$fstatistic[1])
 CNT2_IR_Fstat_P <- sapply(which(names(COMB) %in% metabonames), function(x) pf(
-  summary(lm(scale(COMB[,x]) ~ COMB$AGE + COMB$SEX + COMB$Cohort_1  + COMB$CNT2))$fstatistic[1],
-  summary(lm(scale(COMB[,x]) ~ COMB$AGE + COMB$SEX + COMB$Cohort_1  + COMB$CNT2))$fstatistic[2],
-  summary(lm(scale(COMB[,x]) ~ COMB$AGE + COMB$SEX + COMB$Cohort_1 + COMB$CNT2))$fstatistic[3],
+  summary(lm(scale(COMB[,x]) ~ COMB$AGE + COMB$SEX + COMB$Cohort_1  + COMB$CNT2 + COMB$PC1 + COMB$PC2 + COMB$PC3))$fstatistic[1],
+  summary(lm(scale(COMB[,x]) ~ COMB$AGE + COMB$SEX + COMB$Cohort_1  + COMB$CNT2 + COMB$PC1 + COMB$PC2 + COMB$PC3))$fstatistic[2],
+  summary(lm(scale(COMB[,x]) ~ COMB$AGE + COMB$SEX + COMB$Cohort_1 + COMB$CNT2 + COMB$PC1 + COMB$PC2 + COMB$PC3))$fstatistic[3],
   lower.tail=F)) # model F-statistic extraction
 CNT2_IR_results <- cbind (names(COMB)[which(names(COMB) %in% metabonames)], CNT2_IR_Beta,CNT2_IR_SE,CNT2_IR_P,CNT2_IR_Fstat,CNT2_IR_Fstat_P)
 temp0 <- (CNT2_IR_results[order(as.numeric(CNT2_IR_results[,4])),])
@@ -384,11 +409,11 @@ M <- c("Palmitoleic acid","","",
        "MG(14:0)","Trihydroxy-cholanoic acid",
        "Trihydroxy-cholanoic acid",
        "Bilirubin","")
-Study <- c(rep(c("Swedish Cohorts","Kora/TwinsUK","CHARGE"),2),c("Swedish Cohorts","Kora/TwinsUK"),
-           c("Swedish Cohorts","Kora/TwinsUK","Finnish Cohorts"),rep(c("Swedish Cohorts","Kora/TwinsUK"),3),
-           rep("Swedish Cohorts",3),c("Swedish Cohorts", "Kora/TwinsUK"))
+Study <- c(rep(c("Swedish Cohorts","KORA/TwinsUK","CHARGE"),2),c("Swedish Cohorts","KORA/TwinsUK"),
+           c("Swedish Cohorts","KORA/TwinsUK","Finnish Cohorts"),rep(c("Swedish Cohorts","KORA/TwinsUK"),3),
+           rep("Swedish Cohorts",3),c("Swedish Cohorts", "KORA/TwinsUK"))
 
-# 10.71 8.95 pdf 14x12
+# 10.71 8.95 pdf 13.5x12
 par(mfrow=c(1,1))
 forest.default(x,sei=sei,psize=0.85,slab=M,
                ilab=Study,ilab.xpos=-2.6,cex=0.85,
