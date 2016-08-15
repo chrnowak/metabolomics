@@ -24,18 +24,43 @@ is_snps <- read.delim("scott_is_snps.txt")
 SCOTTinsecr_beta <- 0.05 
 SCOTTinsecr_se <- (-0.06 - -0.04)/3.92
 
+### requested by reviewers: population stratification adjustment
+### adjustment for first 3 genetic principle components
+
+pivus_PC <- read.table("~/Desktop/pivus.+.qced.pca.evec.txt", quote="\"")
+twge_PC <- data.frame(read.table("~/Desktop/twge.+.pca.evec.txt", quote="\""))
+split_1 <- str_split_fixed(as.character(twge_PC[,1]), ":", 2)
+twge_PC$FID <- (split_1[,1])
+pivus_PC$lpnr <- (as.numeric(pivus_PC[,1]))
+
+COMB2$PC1<-c()
+COMB2$PC2<-c()
+COMB2$PC3<-c()
+for (i in 1:nrow(COMB2)){
+  if (!is.na(COMB2$lpnr[i])) COMB2$PC1[i] <- pivus_PC[match(COMB2$lpnr[i],pivus_PC$lpnr),2]
+  else COMB2$PC1[i] <- twge_PC[match(COMB2$gwas_fid[i],twge_PC$FID),2]
+  if (!is.na(COMB2$lpnr[i])) COMB2$PC2[i] <- pivus_PC[match(COMB2$lpnr[i],pivus_PC$lpnr),3]
+  else COMB2$PC2[i] <- twge_PC[match(COMB2$gwas_fid[i],twge_PC$FID),3]
+  if (!is.na(COMB2$lpnr[i])) COMB2$PC3[i] <- pivus_PC[match(COMB2$lpnr[i],pivus_PC$lpnr),4]
+  else COMB2$PC3[i] <- twge_PC[match(COMB2$gwas_fid[i],twge_PC$FID),4]
+}
+
+COMB2$PC1 <- ifelse(is.na(COMB2$PC1),mean(COMB2$PC1,na.rm=T),COMB2$PC1)
+COMB2$PC2 <- ifelse(is.na(COMB2$PC2),mean(COMB2$PC2,na.rm=T),COMB2$PC2)
+COMB2$PC3 <- ifelse(is.na(COMB2$PC3),mean(COMB2$PC3,na.rm=T),COMB2$PC3)
+
 CNT2_Insecr_Beta <- sapply(which(names(COMB2) %in% metabonames), function(x) 
-  summary(lm(scale(COMB2[,x]) ~ COMB2$AGE + COMB2$SEX + COMB2$Cohort_1  + COMB2$CNT2))$coef[5,1])
+  summary(lm(scale(COMB2[,x]) ~ COMB2$AGE + COMB2$SEX + COMB2$Cohort_1  + COMB2$CNT2 + COMB2$PC1 + COMB2$PC2 + COMB2$PC3))$coef[5,1])
 CNT2_Insecr_SE <- sapply(which(names(COMB2) %in% metabonames), function(x) 
-  summary(lm(scale(COMB2[,x]) ~ COMB2$AGE + COMB2$SEX + COMB2$Cohort_1  + COMB2$CNT2))$coef[5,2])
+  summary(lm(scale(COMB2[,x]) ~ COMB2$AGE + COMB2$SEX + COMB2$Cohort_1  + COMB2$CNT2 + COMB2$PC1 + COMB2$PC2 + COMB2$PC3))$coef[5,2])
 CNT2_Insecr_P <- sapply(which(names(COMB2) %in% metabonames), function(x) 
-  summary(lm(scale(COMB2[,x]) ~ COMB2$AGE + COMB2$SEX + COMB2$Cohort_1  + COMB2$CNT2))$coef[5,4])
+  summary(lm(scale(COMB2[,x]) ~ COMB2$AGE + COMB2$SEX + COMB2$Cohort_1  + COMB2$CNT2 + COMB2$PC1 + COMB2$PC2 + COMB2$PC3))$coef[5,4])
 CNT2_Insecr_Fstat <- sapply(which(names(COMB2) %in% metabonames), function(x) 
-  summary(lm(scale(COMB2[,x]) ~ COMB2$AGE + COMB2$SEX + COMB2$Cohort_1 + COMB2$CNT2))$fstatistic[1])
+  summary(lm(scale(COMB2[,x]) ~ COMB2$AGE + COMB2$SEX + COMB2$Cohort_1 + COMB2$CNT2 + COMB2$PC1 + COMB2$PC2 + COMB2$PC3))$fstatistic[1])
 CNT2_Insecr_Fstat_P <- sapply(which(names(COMB2) %in% metabonames), function(x) pf(
-  summary(lm(scale(COMB2[,x]) ~ COMB2$AGE + COMB2$SEX + COMB2$Cohort_1 + COMB2$CNT2))$fstatistic[1],
-  summary(lm(scale(COMB2[,x]) ~ COMB2$AGE + COMB2$SEX + COMB2$Cohort_1 + COMB2$CNT2))$fstatistic[2],
-  summary(lm(scale(COMB2[,x]) ~ COMB2$AGE + COMB2$SEX + COMB2$Cohort_1 + COMB2$CNT2))$fstatistic[3],
+  summary(lm(scale(COMB2[,x]) ~ COMB2$AGE + COMB2$SEX + COMB2$Cohort_1 + COMB2$CNT2 + COMB2$PC1 + COMB2$PC2 + COMB2$PC3))$fstatistic[1],
+  summary(lm(scale(COMB2[,x]) ~ COMB2$AGE + COMB2$SEX + COMB2$Cohort_1 + COMB2$CNT2 + COMB2$PC1 + COMB2$PC2 + COMB2$PC3))$fstatistic[2],
+  summary(lm(scale(COMB2[,x]) ~ COMB2$AGE + COMB2$SEX + COMB2$Cohort_1 + COMB2$CNT2 + COMB2$PC1 + COMB2$PC2 + COMB2$PC3))$fstatistic[3],
   lower.tail=F)) # model F-statistic extraction
 CNT2_Insec_results <- cbind(names(COMB2)[which(names(COMB2) %in% metabonames)], CNT2_Insecr_Beta,CNT2_Insecr_SE,CNT2_Insecr_P,CNT2_Insecr_Fstat,CNT2_Insecr_Fstat_P)
 
